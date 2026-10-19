@@ -1,4 +1,4 @@
-const VERSION = 'farao-v4';
+const VERSION = 'farao-v5';
 const AUDIO_CACHE = 'farao-audio-v2';
 const SHELL = ['./', './index.html', './css/app.css', './js/db.js', './js/app.js', './js/data/roteiro.js', './js/data/lugares.js', './js/data/frases.js', './js/data/guias.js', './js/data/audios.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 
@@ -26,7 +26,7 @@ async function responderComRange(req, res) {
 }
 
 async function audio(req) {
-  const url = req.url.split('#')[0].split('?')[0];
+  const url = req.url.split('#')[0];
   const guardado = await (await caches.open(AUDIO_CACHE)).match(url);
   if (guardado) return responderComRange(req, guardado);
   try {

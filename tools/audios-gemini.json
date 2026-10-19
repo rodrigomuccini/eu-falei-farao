@@ -1,0 +1,118 @@
+{
+ "audio/lugares/piramides.m4a": {
+  "a": "legado",
+  "m": "gemini-3.8-flash-tts"
+ },
+ "audio/frases/2_0.m4a": {
+  "a": "legado",
+  "m": "gemini-3.8-flash-tts"
+ },
+ "audio/lugares/esfinge.m4a": {
+  "a": "legado",
+  "m": "gemini-3.8-flash-tts"
+ },
+ "audio/lugares/saqqara.m4a": {
+  "a": "legado",
+  "m": "gemini-3.8-flash-tts"
+ },
+ "audio/lugares/gem.m4a": {
+  "a": "legado",
+  "m": "gemini-3.8-flash-tts"
+ },
+ "audio/lugares/cidadela.m4a": {
+  "a": "legado",
+  "m": "gemini-3.8-flash-tts"
+ },
+ "audio/lugares/khan.m4a": {
+  "a": "legado",
+  "m": "gemini-3.8-flash-tts"
+ },
+ "audio/lugares/copta.m4a": {
+  "a": "legado",
+  "m": "gemini-3.8-flash-tts"
+ },
+ "audio/lugares/represa.m4a": {
+  "a": "legado",
+  "m": "gemini-3.8-flash-tts"
+ },
+ "audio/lugares/feluca.m4a": {
+  "a": "509feba4ed7d8ce2",
+  "m": "gemini-3.8-flash-tts"
+ },
+ "audio/lugares/philae.m4a": {
+  "a": "05f755b9b451cfb3",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/lugares/abusimbel.m4a": {
+  "a": "60ebcb5bdeea86a6",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/lugares/komombo.m4a": {
+  "a": "aadb008d4795da7c",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/lugares/edfu.m4a": {
+  "a": "938bd28ccb85ebe4",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/lugares/luxor.m4a": {
+  "a": "de430a344c8ffee0",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/lugares/karnak.m4a": {
+  "a": "9683609bed3c89a7",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/lugares/memnon.m4a": {
+  "a": "1cc3bc921a273065",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/lugares/valedosreis.m4a": {
+  "a": "ea6029fb55f1127c",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/lugares/hatshepsut.m4a": {
+  "a": "1e563029cb473e96",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/lugares/alexandria.m4a": {
+  "a": "04bed671beb1ba42",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/lugares/fayoum.m4a": {
+  "a": "1b32306c0fc48443",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/lugares/sharm.m4a": {
+  "a": "dcc5e16ef8f9e086",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/faraos/0.m4a": {
+  "a": "bef29508b80115af",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/faraos/1.m4a": {
+  "a": "be3698fe2e6de345",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/faraos/2.m4a": {
+  "a": "d15c669b76951638",
+  "m": "gemini-3.8-flash-lite-tts"
+ },
+ "audio/faraos/3.m4a": {
+  "a": "1f17fa838fc242e3",
+  "m": "gemini-3.1-flash-tts-preview"
+ },
+ "audio/faraos/4.m4a": {
+  "a": "f8942cacccb1ff28",
+  "m": "gemini-3.1-flash-tts-preview"
+ },
+ "audio/faraos/5.m4a": {
+  "a": "f9b9403430d39dfd",
+  "m": "gemini-3.1-flash-tts-preview"
+ },
+ "audio/faraos/6.m4a": {
+  "a": "efbc744aed6a355c",
+  "m": "gemini-3.1-flash-tts-preview"
+ }
+}

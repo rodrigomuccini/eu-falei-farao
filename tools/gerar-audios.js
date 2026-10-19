@@ -19,5 +19,6 @@ for (const j of jobs) {
   lista.push('./' + j.out);
   process.stdout.write('.');
 }
-fs.writeFileSync(path.join(ROOT, 'js/data/audios.js'), '// Gerado por tools/gerar-audios.js\nconst AUDIOS = ' + JSON.stringify(lista) + ';\n');
+// audios.js agora é gerado por tools/indexar-audios.js
+  0 && fs.writeFileSync(path.join(ROOT, 'js/data/audios.js'), '// Gerado por tools/gerar-audios.js\nconst AUDIOS = ' + JSON.stringify(lista) + ';\n');
 console.log(`\n${jobs.length} áudios gerados.`);

@@ -40,8 +40,22 @@ Abrir o app no computador, preencher Remédios, Ficha médica e Configurações 
 
 ## Regenerar os áudios
 
-Depois de mudar textos em `app/js/data/lugares.js` ou `app/js/data/frases.js`, rode no Mac (vozes Luciana e Majed, e ffmpeg):
+As vozes são do Gemini TTS, voz Sulafat. A chave fica no Keychain do Mac (serviço `GEMINI_API_KEY`).
 
 ```bash
-node tools/gerar-audios.js
+node tools/gerar-audios-gemini.js
 ```
+
+O plano gratuito do Gemini limita cerca de 10 gravações por dia e por modelo. O gerador passa para o próximo modelo quando a cota acaba e continua no dia seguinte de onde parou. Para regravar no melhor modelo o que saiu num modelo inferior:
+
+```bash
+node tools/gerar-audios-gemini.js --melhorar
+```
+
+Depois de qualquer gravação, atualize as versões antes de publicar, para o iPhone baixar os arquivos novos:
+
+```bash
+node tools/indexar-audios.js
+```
+
+O gerador antigo com as vozes do Mac (`tools/gerar-audios.js`) continua como reserva.

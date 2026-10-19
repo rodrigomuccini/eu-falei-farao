@@ -1,135 +1,151 @@
-// Gera os áudios do app com o Gemini 3.8 Flash TTS (voz humanizada).
+// Gera os áudios do app com a voz Sulafat do Gemini TTS.
 // Uso:
-//   node tools/gerar-audios-gemini.js --amostra   -> grava 2 amostras em amostras/ para ouvir antes
-//   node tools/gerar-audios-gemini.js             -> grava todos os áudios em app/audio/
-// A chave vem de GEMINI_API_KEY ou do Keychain do macOS (serviço GEMINI_API_KEY).
-// Retoma de onde parou: só regrava o que mudou (tools/audios-gemini.json guarda o que já foi feito).
+//   node tools/gerar-audios-gemini.js            -> grava o que falta (ou o que mudou)
+//   node tools/gerar-audios-gemini.js --melhorar -> regrava no melhor modelo o que saiu num modelo inferior
+//   node tools/gerar-audios-gemini.js --amostra  -> 2 amostras em amostras/
+// Chave: GEMINI_API_KEY ou Keychain do macOS (serviço GEMINI_API_KEY).
+// O plano gratuito limita poucas gravações por dia e por modelo. Quando a cota de um modelo acaba,
+// o gerador passa para o próximo da lista. O registro (tools/audios-gemini.json) guarda o modelo de cada arquivo.
 const fs = require('fs'), path = require('path'), vm = require('vm'), os = require('os'), crypto = require('crypto');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 
-const MODELO = process.env.GEMINI_TTS_MODEL || 'gemini-3.8-flash-tts';
-const VOZ = process.env.GEMINI_TTS_VOZ || 'Sulafat';          // "Warm"
-const VOZ_ARABE = process.env.GEMINI_TTS_VOZ_AR || 'Sulafat';
+const MODELOS = (process.env.GEMINI_TTS_MODELOS || 'gemini-3.8-flash-tts,gemini-3.8-flash-lite-tts,gemini-3.1-flash-tts-preview,gemini-2.5-flash-preview-tts,gemini-2.5-pro-preview-tts').split(',');
+const SEM_ESTILO = new Set(); // modelos que não aceitam a instrução de estilo
+const VOZ = process.env.GEMINI_TTS_VOZ || 'Sulafat';
 const ESTILO_PT = 'warm, gentle Brazilian Portuguese storyteller with a natural Brazilian accent, like a passionate tour guide telling a story to a friend, calm unhurried pace, expressive but never theatrical';
 const ESTILO_AR = 'native Egyptian Arabic speaker from Cairo, friendly and clear, speaking slightly slowly so a tourist can repeat';
+const SEP = ' <long pause> <long pause> ';
 
-const RAIZ = path.join(__dirname, '..');
-const APP = path.join(RAIZ, 'app');
+const RAIZ = path.join(__dirname, '..'), APP = path.join(RAIZ, 'app');
 const REGISTRO = path.join(__dirname, 'audios-gemini.json');
-const amostra = process.argv.includes('--amostra');
+const ARGS = process.argv.slice(2);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+class CotaEsgotada extends Error {}
 
 function chave() {
   if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY.trim();
   try { return execFileSync('security', ['find-generic-password', '-s', 'GEMINI_API_KEY', '-w'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; }
 }
 
-function carregarDados() {
+// Unidades de gravação: cada história sozinha; faraós juntos; frases juntas por categoria.
+function unidades() {
   const ctx = {}; vm.createContext(ctx);
-  for (const f of ['roteiro.js', 'lugares.js', 'frases.js']) vm.runInContext(fs.readFileSync(path.join(APP, 'js/data', f), 'utf8') + '\n;this.LUGARES = typeof LUGARES !== "undefined" ? LUGARES : this.LUGARES; this.FARAOS = typeof FARAOS !== "undefined" ? FARAOS : this.FARAOS; this.FRASES = typeof FRASES !== "undefined" ? FRASES : this.FRASES;', ctx);
-  const jobs = [];
-  for (const [id, l] of Object.entries(ctx.LUGARES)) jobs.push({ out: `audio/lugares/${id}.m4a`, voz: VOZ, estilo: ESTILO_PT, text: `${l.nome}. <short pause> ${l.epoca}. <short pause> ${l.historia}` });
-  ctx.FARAOS.forEach((f, i) => jobs.push({ out: `audio/faraos/${i}.m4a`, voz: VOZ, estilo: ESTILO_PT, text: `${f.nome}. <short pause> ${f.texto}` }));
-  ctx.FRASES.forEach((c, ci) => c.itens.forEach((f, ii) => jobs.push({ out: `audio/frases/${ci}_${ii}.m4a`, voz: VOZ_ARABE, estilo: ESTILO_AR, text: f.ar })));
-  return jobs;
+  for (const f of ['lugares.js', 'frases.js']) vm.runInContext(fs.readFileSync(path.join(APP, 'js/data', f), 'utf8') + '\n;this.LUGARES = typeof LUGARES !== "undefined" ? LUGARES : this.LUGARES; this.FARAOS = typeof FARAOS !== "undefined" ? FARAOS : this.FARAOS; this.FRASES = typeof FRASES !== "undefined" ? FRASES : this.FRASES;', ctx);
+  const u = [];
+  for (const [id, l] of Object.entries(ctx.LUGARES)) u.push({ estilo: ESTILO_PT, itens: [{ out: `audio/lugares/${id}.m4a`, text: `${l.nome}. <short pause> ${l.epoca}. <short pause> ${l.historia}` }] });
+  u.push({ estilo: ESTILO_PT, itens: ctx.FARAOS.map((f, i) => ({ out: `audio/faraos/${i}.m4a`, text: `${f.nome}. <short pause> ${f.texto}` })) });
+  ctx.FRASES.forEach((c, ci) => u.push({ estilo: ESTILO_AR, itens: c.itens.map((f, ii) => ({ out: `audio/frases/${ci}_${ii}.m4a`, text: f.ar })) }));
+  return u;
 }
+const assinatura = (estilo, text) => crypto.createHash('sha1').update([VOZ, estilo, text].join('|')).digest('hex').slice(0, 16);
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-class CotaEsgotada extends Error {}
-
-async function sintetizar(texto, voz, estilo, key) {
-  const body = {
-    model: MODELO,
-    input: [{ type: 'user_input', content: [{ type: 'text', text: texto, annotations: [{ type: 'speech_metadata', style: estilo }] }] }],
-    response_format: { type: 'audio' },
-    generation_config: { speech_config: [{ voice: voz }] },
-  };
-  for (let tentativa = 1; tentativa <= 6; tentativa++) {
+async function sintetizar(modelo, texto, estilo, key) {
+  const conteudo = { type: 'text', text: texto }; if (!SEM_ESTILO.has(modelo)) conteudo.annotations = [{ type: 'speech_metadata', style: estilo }];
+  const body = { model: modelo, input: [{ type: 'user_input', content: [conteudo] }], response_format: { type: 'audio' }, generation_config: { speech_config: [{ voice: VOZ }] } };
+  for (let t = 1; t <= 5; t++) {
     let r;
-    try {
-      r = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) });
-    } catch (e) { await sleep(2000 * tentativa); continue; }
-    if (r.ok) {
-      const j = await r.json();
-      const audios = (j.steps || []).filter(s => s.type === 'model_output').flatMap(s => s.content || []).filter(c => c.type === 'audio' && c.data);
-      if (!audios.length) throw new Error('Resposta sem áudio: ' + JSON.stringify(j).slice(0, 300));
-      return { data: Buffer.from(audios[audios.length - 1].data, 'base64'), mime: audios[audios.length - 1].mime_type || '' };
-    }
+    try { r = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) }); }
+    catch { await sleep(2000 * t); continue; }
     const txt = await r.text();
-    if (r.status === 401 || r.status === 403 || /API_KEY_INVALID|API key not valid/i.test(txt)) throw new Error(`Chave recusada (${r.status}): ${txt.slice(0, 200)}`);
-    if (r.status === 429) {
-      if (/per.?day|PerDay|daily/i.test(txt)) throw new CotaEsgotada(txt.slice(0, 300));
-      await sleep(15000 * tentativa); continue;
+    if (r.ok) {
+      const j = JSON.parse(txt);
+      const a = (j.steps || []).filter(s => s.type === 'model_output').flatMap(s => s.content || []).filter(c => c.type === 'audio' && c.data);
+      if (!a.length) { await sleep(1000); continue; }
+      return garantirWav(Buffer.from(a[a.length - 1].data, 'base64'));
     }
-    if (r.status >= 500) { await sleep(3000 * tentativa); continue; }
-    throw new Error(`Erro ${r.status}: ${txt.slice(0, 300)}`);
+    if (r.status === 401 || r.status === 403 || /API_KEY_INVALID|API key not valid/i.test(txt)) throw new Error(`Chave recusada (${r.status})`);
+    if (/Speech metadata is not supported/i.test(txt) && !SEM_ESTILO.has(modelo)) { SEM_ESTILO.add(modelo); return sintetizar(modelo, texto, estilo, key); }
+    if (r.status === 404 || /not found|not supported for/i.test(txt)) throw new CotaEsgotada(modelo);
+    if (r.status === 402) throw new Error('Créditos pré-pagos esgotados (402)');
+    if (r.status === 429) { if (/per.?day|PerDay|daily/i.test(txt)) throw new CotaEsgotada(modelo); await sleep(20000 * t); continue; }
+    if (r.status >= 500 || /tried to generate text/i.test(txt)) { await sleep(3000 * t); continue; }
+    throw new Error(`Erro ${r.status}: ${txt.slice(0, 200)}`);
   }
-  throw new Error('Falhou depois de 6 tentativas');
+  throw new Error('Falhou depois de 5 tentativas');
 }
 
-// Divide textos longos em blocos por frase, caso o modelo recuse o texto inteiro.
-function dividir(texto, max = 600) {
-  const frases = texto.match(/[^.!?]+[.!?]+["”]?\s*/g) || [texto];
-  const blocos = []; let atual = '';
-  for (const f of frases) { if ((atual + f).length > max && atual) { blocos.push(atual.trim()); atual = ''; } atual += f; }
-  if (atual.trim()) blocos.push(atual.trim());
-  return blocos;
-}
-
-function paraM4a(wavs, destino, tmp) {
-  const lista = path.join(tmp, 'lista.txt');
-  const arquivos = wavs.map((buf, i) => { const f = path.join(tmp, `p${i}.wav`); fs.writeFileSync(f, buf); return f; });
-  fs.writeFileSync(lista, arquivos.map(f => `file '${f}'`).join('\n'));
-  fs.mkdirSync(path.dirname(destino), { recursive: true });
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', lista, '-ac', '1', '-ar', '24000', '-c:a', 'aac', '-b:a', '48k', '-movflags', '+faststart', destino]);
-}
-
-// O retorno pode vir como WAV ou como PCM puro (24 kHz, mono, 16 bits). Garante WAV.
 function garantirWav(buf) {
   if (buf.slice(0, 4).toString() === 'RIFF') return buf;
-  const h = Buffer.alloc(44); const rate = 24000, ch = 1, bits = 16;
-  h.write('RIFF', 0); h.writeUInt32LE(36 + buf.length, 4); h.write('WAVE', 8); h.write('fmt ', 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(ch, 22);
-  h.writeUInt32LE(rate, 24); h.writeUInt32LE(rate * ch * bits / 8, 28); h.writeUInt16LE(ch * bits / 8, 32); h.writeUInt16LE(bits, 34); h.write('data', 36); h.writeUInt32LE(buf.length, 40);
+  const h = Buffer.alloc(44); const rate = 24000;
+  h.write('RIFF', 0); h.writeUInt32LE(36 + buf.length, 4); h.write('WAVE', 8); h.write('fmt ', 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(rate, 24); h.writeUInt32LE(rate * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(buf.length, 40);
   return Buffer.concat([h, buf]);
 }
 
-async function gravar(job, destino, key, tmp) {
-  try {
-    const { data } = await sintetizar(job.text, job.voz, job.estilo, key);
-    paraM4a([garantirWav(data)], destino, tmp);
-  } catch (e) {
-    if (e instanceof CotaEsgotada || /Chave recusada/.test(e.message) || job.text.length < 300) throw e;
-    const partes = [];
-    for (const bloco of dividir(job.text)) partes.push(garantirWav((await sintetizar(bloco, job.voz, job.estilo, key)).data));
-    paraM4a(partes, destino, tmp);
+function codificar(wavPath, destino, ini, fim) {
+  fs.mkdirSync(path.dirname(destino), { recursive: true });
+  const corte = ini != null ? ['-ss', ini.toFixed(3), '-to', fim.toFixed(3)] : [];
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', wavPath, ...corte, '-af', 'silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,adelay=120,apad=pad_dur=0.25', '-ac', '1', '-ar', '24000', '-c:a', 'aac', '-b:a', '48k', '-movflags', '+faststart', destino]);
+}
+
+// Acha os pontos de corte: os (n-1) maiores silêncios do áudio.
+function cortes(wavPath, n) {
+  const dur = +execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', wavPath]).toString();
+  const out = spawnSync('ffmpeg', ['-i', wavPath, '-af', 'silencedetect=noise=-40dB:d=0.35', '-f', 'null', '-'], { encoding: 'utf8' }).stderr;
+  const sil = []; let ini = null;
+  for (const l of out.split('\n')) {
+    let m = l.match(/silence_start: ([\d.]+)/); if (m) ini = +m[1];
+    m = l.match(/silence_end: ([\d.]+) \| silence_duration: ([\d.]+)/); if (m && ini != null) { sil.push({ ini, fim: +m[1], d: +m[2] }); ini = null; }
+  }
+  const internos = sil.filter(s => s.ini > 0.2 && s.fim < dur - 0.2);
+  if (internos.length < n - 1) return null;
+  const escolhidos = internos.sort((a, b) => b.d - a.d).slice(0, n - 1).sort((a, b) => a.ini - b.ini);
+  const menorSeparador = escolhidos.length ? Math.min(...escolhidos.map(s => s.d)) : 0;
+  const proximo = internos.sort((a, b) => b.d - a.d)[n - 1];
+  if (proximo && escolhidos.length && proximo.d > menorSeparador * 0.8) return null; // separadores não se distinguem das pausas normais
+  const pts = [0, ...escolhidos.map(s => (s.ini + s.fim) / 2), dur];
+  const seg = []; for (let i = 0; i < n; i++) seg.push([pts[i], pts[i + 1]]);
+  return seg.every(([a, b]) => b - a > 0.3) ? seg : null;
+}
+
+let modeloIdx = 0;
+async function comFallback(fn) {
+  for (;;) {
+    if (modeloIdx >= MODELOS.length) throw new CotaEsgotada('todos');
+    try { return { res: await fn(MODELOS[modeloIdx]), modelo: MODELOS[modeloIdx] }; }
+    catch (e) { if (e instanceof CotaEsgotada && !ARGS.includes('--melhorar')) { console.log(`\n  cota diária de ${MODELOS[modeloIdx]} esgotada, passando para o próximo modelo`); modeloIdx++; continue; } throw e; }
   }
 }
 
 (async () => {
   const key = chave();
-  if (!key) { console.error('Sem chave. Defina GEMINI_API_KEY ou guarde no Keychain com:\n  security add-generic-password -a "$USER" -s GEMINI_API_KEY -w'); process.exit(2); }
+  if (!key) { console.error('Sem chave. Guarde no Keychain: security add-generic-password -a "$USER" -s GEMINI_API_KEY -w'); process.exit(2); }
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-tts-'));
-  let jobs = carregarDados();
-  if (amostra) {
-    jobs = [jobs.find(j => j.out.endsWith('/piramides.m4a')), jobs.find(j => j.out.endsWith('frases/2_0.m4a'))];
-    for (const j of jobs) { const d = path.join(RAIZ, 'amostras', path.basename(path.dirname(j.out)) + '-' + path.basename(j.out)); await gravar(j, d, key, tmp); console.log('amostra:', path.relative(RAIZ, d)); }
-    return;
-  }
-  const reg = fs.existsSync(REGISTRO) ? JSON.parse(fs.readFileSync(REGISTRO, 'utf8')) : {};
-  let feitos = 0, pulados = 0, falhas = 0;
-  for (const j of jobs) {
-    const assinatura = crypto.createHash('sha1').update([MODELO, j.voz, j.estilo, j.text].join('|')).digest('hex').slice(0, 16);
-    const destino = path.join(APP, j.out);
-    if (reg[j.out] === assinatura && fs.existsSync(destino)) { pulados++; continue; }
-    try {
-      await gravar(j, destino, key, tmp);
-      reg[j.out] = assinatura; fs.writeFileSync(REGISTRO, JSON.stringify(reg, null, 1));
-      feitos++; process.stdout.write(`\r${feitos + pulados}/${jobs.length} ${j.out}                    `);
-    } catch (e) {
-      if (e instanceof CotaEsgotada) { console.log(`\nCota diária do Gemini esgotada. ${feitos + pulados} de ${jobs.length} prontos. Rode de novo amanhã (ou ative o faturamento) que ele continua daqui.`); process.exit(3); }
-      if (/Chave recusada/.test(e.message)) { console.log('\n' + e.message); process.exit(2); }
-      falhas++; console.log(`\nFalhou ${j.out}: ${e.message}`);
+  const wav = path.join(tmp, 'a.wav');
+  let reg = fs.existsSync(REGISTRO) ? JSON.parse(fs.readFileSync(REGISTRO, 'utf8')) : {};
+  for (const k of Object.keys(reg)) if (typeof reg[k] === 'string') reg[k] = { a: 'legado', m: 'gemini-3.8-flash-tts' };
+  const salvar = () => fs.writeFileSync(REGISTRO, JSON.stringify(reg, null, 1));
+  const melhorar = ARGS.includes('--melhorar');
+  if (melhorar) MODELOS.splice(1);
+  const pendente = (it, estilo) => {
+    const r = reg[it.out]; if (!fs.existsSync(path.join(APP, it.out)) || !r) return true;
+    if (r.a !== 'legado' && r.a !== assinatura(estilo, it.text)) return true;
+    return melhorar && r.m !== MODELOS[0];
+  };
+  let feitos = 0;
+  try {
+    for (const u of unidades()) {
+      const itens = u.itens.filter(it => pendente(it, u.estilo));
+      if (!itens.length) continue;
+      if (itens.length > 1) {
+        const { modelo } = await comFallback(async m => { fs.writeFileSync(wav, await sintetizar(m, itens.map(i => i.text).join(SEP), u.estilo, key)); });
+        const seg = cortes(wav, itens.length);
+        if (seg) {
+          itens.forEach((it, i) => { codificar(wav, path.join(APP, it.out), seg[i][0], seg[i][1]); reg[it.out] = { a: assinatura(u.estilo, it.text), m: modelo }; feitos++; });
+          salvar(); console.log(`ok ${itens.length} itens juntos (${path.dirname(itens[0].out)}) com ${modelo}`); continue;
+        }
+        console.log(`  não deu para separar ${path.dirname(itens[0].out)} pelas pausas; gravando um por um`);
+      }
+      for (const it of itens) {
+        const { modelo } = await comFallback(async m => { fs.writeFileSync(wav, await sintetizar(m, it.text, u.estilo, key)); });
+        codificar(wav, path.join(APP, it.out)); reg[it.out] = { a: assinatura(u.estilo, it.text), m: modelo }; salvar(); feitos++;
+        console.log(`ok ${it.out} com ${modelo}`);
+      }
     }
+  } catch (e) {
+    if (e instanceof CotaEsgotada) { console.log(`\nCota diária esgotada em todos os modelos. ${feitos} gravados agora. Rode de novo amanhã que ele continua daqui.`); process.exit(3); }
+    console.log('\nErro: ' + e.message); process.exit(1);
   }
-  console.log(`\nPronto: ${feitos} gravados agora, ${pulados} já estavam prontos, ${falhas} falhas.`);
-  if (falhas) process.exit(1);
-})().catch(e => { console.error('Erro: ' + e.message.split('\n')[0].slice(0, 160)); process.exit(1); });
+  const porModelo = {}; Object.values(reg).forEach(r => porModelo[r.m] = (porModelo[r.m] || 0) + 1);
+  console.log(`\nPronto. ${feitos} gravados agora. Por modelo: ${JSON.stringify(porModelo)}`);
+})();
