@@ -1,4 +1,4 @@
-# Egito com a Mãe
+# Eu falei Faraó
 
 Aplicativo de viagem (PWA) para a viagem ao Egito de 20/10 a 01/11/2026, operada pela Corsini / Cativa.
 Feito para iPhone, em português, funciona sem internet depois de aberto uma vez.
@@ -31,7 +31,7 @@ Qualquer hospedagem estática serve (GitHub Pages, Netlify, Vercel, Cloudflare P
 
 1. Abrir o endereço publicado no Safari.
 2. Botão de compartilhar → "Adicionar à Tela de Início".
-3. Abrir pelo ícone "Egito" uma vez com internet; depois funciona offline.
+3. Abrir pelo ícone "Eu falei Faraó" uma vez com internet; depois funciona offline.
 
 ## Configurar remédios e ficha pelo computador
 
