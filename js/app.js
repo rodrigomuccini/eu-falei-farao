@@ -110,8 +110,13 @@ function statusAudiosTexto(n) { return n >= AUDIOS.length ? `✓ Todos os ${AUDI
 window.addEventListener('load', () => setTimeout(() => baixarAudios(true), 4000));
 
 /* ===== Estado ===== */
+const SOS_TEL_PADRAO = '+5511987511415'; // Rodrigo
 const Cfg = {
-  get() { return Store.get('cfg', { nome: '', amiga: 'Iracema', familiaNome: 'Rodrigo', familiaTel: '', pin: '' }); },
+  get() {
+    const c = Object.assign({ nome: '', amiga: 'Iracema', familiaNome: 'Rodrigo', familiaTel: '', pin: '', callmebot: '' }, Store.get('cfg', {}));
+    if (!c.familiaTel) { c.familiaTel = SOS_TEL_PADRAO; c.familiaNome = c.familiaNome || 'Rodrigo'; }
+    return c;
+  },
   set(c) { Store.set('cfg', c); },
 };
 const Rem = {
@@ -141,17 +146,19 @@ function mostrarCartao(pt, ar, en, falar) {
 const NAV = ['hoje', 'roteiro', 'guia', 'frases', 'mais'];
 function go(h) { location.hash = '#' + h; }
 window.addEventListener('hashchange', render);
-window.addEventListener('load', () => { importarDoLink(); render(); });
-function render() {
-  stopSpeak();
+window.addEventListener('load', () => { importarDoLink(); render(true); });
+// render(true) redesenha a mesma tela mantendo a posição de rolagem (usado ao marcar itens).
+function render(manter) {
+  const y = manter === true ? window.scrollY : 0;
+  if (manter !== true) stopSpeak();
   const raw = location.hash.slice(1) || 'hoje';
   const [view, ...args] = raw.split('/');
   const fn = Views[view] || Views.hoje;
   const main = $('#main');
-  main.innerHTML = '';
-  window.scrollTo(0, 0);
+  if (manter !== true) { main.innerHTML = ''; window.scrollTo(0, 0); }
   const res = fn(...args);
-  if (res && res.then) res.then(r => draw(r, view)); else draw(res, view);
+  const fim = r => { draw(r, view); if (y) window.scrollTo(0, y); };
+  if (res && res.then) res.then(fim); else fim(res);
 }
 function draw(r, view) {
   if (!r) return;
@@ -179,7 +186,7 @@ Views.hoje = () => {
     const faltam = Math.round((ini - hoje) / 864e5);
     if (faltam > 0) {
       html += `<div class="hero"><div class="muted">${fmtData(iso)}</div><h1>Falta${faltam > 1 ? 'm' : ''} ${faltam} dia${faltam > 1 ? 's' : ''} para o Egito</h1><div class="muted">${VIAGEM.titulo}</div></div>`;
-      html += relogios;
+      html += SOS_BOTAO() + relogios;
       html += `<h2>Antes de embarcar</h2>${checklistMala()}`;
       html += `<div class="card nile"><b>Instale o app na tela de início</b><p class="small">No Safari, toque no botão de compartilhar (quadrado com seta) e depois em "Adicionar à Tela de Início". Assim ele abre como aplicativo e funciona sem internet.</p></div>`;
     } else {
@@ -189,13 +196,15 @@ Views.hoje = () => {
   }
   const hotel = dia.hotel ? HOTEIS[dia.hotel] : null;
   html += `<div class="hero"><div class="muted">${fmtData(iso)} · Dia ${dia.n} de ${ROTEIRO.length}</div><h1>${esc(dia.titulo)}</h1><div class="muted">📍 ${esc(dia.cidade)}</div></div>`;
-  html += relogios;
+  html += SOS_BOTAO() + relogios;
   html += `<div id="clima"></div>`;
   html += `<div class="grid2" style="margin:12px 0">
     <a class="btn" href="#frases"><span class="ico">💬</span>Frases</a>
+    <a class="btn" href="#camera"><span class="ico">📷</span>Traduzir com câmera</a>
+    <a class="btn nile" href="#album"><span class="ico">🖼️</span>Fotos da viagem</a>
     <a class="btn nile" href="#dinheiro"><span class="ico">💵</span>Dinheiro</a>
     <a class="btn green" href="#familia"><span class="ico">💚</span>Avisar família</a>
-    <a class="btn red" href="#ajuda"><span class="ico">🆘</span>Ajuda</a></div>`;
+    <a class="btn secondary" href="#ajuda"><span class="ico">⛑️</span>Ajuda</a></div>`;
   html += `<h2>Remédios de hoje</h2>` + remediosHoje(iso);
   html += `<h2>Programa de hoje</h2><div class="card tap" onclick="go('dia/${dia.n}')"><div class="body"><p>${esc(dia.resumo)}</p><ul class="dots">${dia.atividades.map(a => `<li><b>${esc(a.t)}</b></li>`).join('')}</ul>${dia.opcionais.length ? `<p class="small"><span class="pill opt">Opcional</span>${dia.opcionais.map(o => esc(o.t)).join(' · ')}</p>` : ''}<p class="muted small">Toque para ver detalhes e dicas</p></div><span class="chev">›</span></div>`;
   if (dia.dicas.length) html += `<div class="card sand"><b>Dicas de hoje</b><ul class="dots">${dia.dicas.map(d => `<li>${esc(d)}</li>`).join('')}</ul></div>`;
@@ -212,7 +221,7 @@ async function clima(cidade, iso) {
   const el = $('#clima'); if (!el) return;
   const c = CIDADES[cidade]; if (!c) return;
   const key = 'clima.' + cidade + '.' + iso;
-  let w = Store.get(key, null);
+  let w = Store.get(key, null) || ((Store.get('clima16', {})[cidade] || {})[iso]) || null;
   if (!w && navigator.onLine) {
     try {
       const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&daily=temperature_2m_max,temperature_2m_min&timezone=Africa%2FCairo&forecast_days=1`);
@@ -235,7 +244,9 @@ function checklistMala() {
   const done = Store.get('mala', {});
   return MALA.map(c => `<div class="card"><b>${esc(c.cat)}</b>${c.itens.map(i => { const k = c.cat + '|' + i; return `<div class="check ${done[k] ? 'done' : ''}" onclick="toggleMala(${esc(JSON.stringify(k))})"><div class="box">${done[k] ? '✓' : ''}</div><div class="label">${esc(i)}</div></div>`; }).join('')}</div>`).join('');
 }
-function toggleMala(k) { const d = Store.get('mala', {}); if (d[k]) delete d[k]; else d[k] = 1; Store.set('mala', d); render(); }
+function toggleMala(k) { const d = Store.get('mala', {}); if (d[k]) delete d[k]; else d[k] = 1; Store.set('mala', d); render(true); }
+
+const SOS_BOTAO = () => `<button class="sos-btn" onclick="iniciarSOS()"><span style="font-size:1.8rem">🆘</span><span>SOS<small>Selfie, áudio e localização para ${esc(Cfg.get().familiaNome)}</small></span></button>`;
 
 /* ---- Remédios ---- */
 function dosesDoDia(iso) {
@@ -252,7 +263,7 @@ function remediosHoje(iso) {
   ${next ? `<p class="small" style="margin-top:10px">${next.h <= agora ? '⚠️ Dose pendente' : 'Próxima dose'}: <b>${next.h} · ${esc(next.r.nome)}</b></p>` : '<p class="small" style="margin-top:10px;color:var(--green)">✓ Todos os remédios de hoje tomados</p>'}
   <a class="btn outline sm" href="#remedios">Gerenciar remédios</a></div>`;
 }
-function toggleDose(iso, key) { const t = Rem.tomados(iso); Rem.marcar(iso, key, !t[key]); render(); }
+function toggleDose(iso, key) { const t = Rem.tomados(iso); Rem.marcar(iso, key, !t[key]); render(true); }
 
 Views.remedios = () => {
   const l = Rem.list();
@@ -279,9 +290,9 @@ function editarRemedio(id) {
     if (!horarios.length) return toast('Informe pelo menos um horário, ex.: 08:00');
     const novo = { id: id || 'r' + Date.now(), nome, dose: $('#r-dose', o).value.trim(), horarios, instrucao: $('#r-inst', o).value, obs: $('#r-obs', o).value.trim() };
     const idx = l.findIndex(x => x.id === id); if (idx >= 0) l[idx] = novo; else l.push(novo);
-    Rem.save(l); o.remove(); render(); toast('Remédio salvo');
+    Rem.save(l); o.remove(); render(true); toast('Remédio salvo');
   };
-  if (id) $('#r-del', o).onclick = () => { if (confirm('Excluir este remédio?')) { Rem.save(l.filter(x => x.id !== id)); o.remove(); render(); } };
+  if (id) $('#r-del', o).onclick = () => { if (confirm('Excluir este remédio?')) { Rem.save(l.filter(x => x.id !== id)); o.remove(); render(true); } };
 }
 function exportarICS() {
   const l = Rem.list(); const ini = VIAGEM.inicio.replace(/-/g, ''), fim = VIAGEM.fim.replace(/-/g, '');
@@ -351,7 +362,7 @@ Views.lugar = id => {
 Views.frases = (cat) => {
   const cats = FRASES.map(c => c.cat); const atual = cat ? decodeURIComponent(cat) : cats[0];
   const grupo = FRASES.find(c => c.cat === atual) || FRASES[0]; const ci = FRASES.indexOf(grupo);
-  let html = `<div class="card nile"><b>Traduzir qualquer coisa</b><p class="small">Para conversa ao vivo e para fotografar cardápios, use o Google Tradutor (instale e baixe os pacotes Português, Árabe e Inglês para funcionar sem internet).</p><div class="row"><a class="btn sm nile" href="https://translate.google.com/?sl=pt&tl=ar&op=translate" target="_blank">Abrir Tradutor</a><button class="btn sm secondary" onclick="traduzirTexto()">Escrever e traduzir</button></div></div>`;
+  let html = `<a class="btn" href="#camera">📷 Traduzir placa ou cardápio com a câmera</a><div class="card nile"><b>Traduzir qualquer coisa</b><p class="small">Para conversa ao vivo e para fotografar cardápios, use o Google Tradutor (instale e baixe os pacotes Português, Árabe e Inglês para funcionar sem internet).</p><div class="row"><a class="btn sm nile" href="https://translate.google.com/?sl=pt&tl=ar&op=translate" target="_blank">Abrir Tradutor</a><button class="btn sm secondary" onclick="traduzirTexto()">Escrever e traduzir</button></div></div>`;
   html += `<div class="tabs">${cats.map(c => `<button class="${c === atual ? 'active' : ''}" onclick="go('frases/${encodeURIComponent(c)}')">${esc(c)}</button>`).join('')}</div>`;
   html += `<div class="card">${grupo.itens.map((f, ii) => `<div class="frase"><div class="body"><div class="pt">${esc(f.pt)}</div><div class="tr small">${esc(f.tr)}</div><div class="ar">${esc(f.ar)}</div></div><button class="icobtn nile" data-audio="audio/frases/${ci}_${ii}.m4a" onclick="tocar('audio/frases/${ci}_${ii}.m4a', ${esc(JSON.stringify(f.ar))}, 'ar-EG')">🔊</button><button class="icobtn" onclick="mostrarCartao(${esc(JSON.stringify(f.pt))}, ${esc(JSON.stringify(f.ar))}, ${esc(JSON.stringify(f.en))}, 'audio/frases/${ci}_${ii}.m4a')">👁️</button></div>`).join('')}</div>
   <p class="muted small">🔊 fala em árabe · 👁️ mostra a frase grande em árabe e inglês para a pessoa ler.</p>`;
@@ -364,9 +375,9 @@ function traduzirTexto() {
 }
 
 /* ---- Ajuda / SOS ---- */
-Views.ajuda = () => {
+Views.ajuda = async () => {
   const cfg = Cfg.get();
-  let html = `<div class="card red"><b>Em emergência médica: ligue 123 (ambulância) e avise a Corsini. Fale devagar em português, eles entendem.</b></div>`;
+  let html = SOS_BOTAO() + `<div class="card red"><b>Em emergência médica: ligue 123 (ambulância) e avise a Corsini. Fale devagar em português, eles entendem.</b></div>`;
   html += `<h2>Ligar agora</h2>`;
   html += `<a class="btn red" href="tel:123">🚑 Ambulância · 123</a><a class="btn red" href="tel:126">👮 Polícia Turística · 126</a>`;
   html += VIAGEM.emergencia.slice(0, 2).map(e => `<div class="row"><a class="btn nile" href="${telLink(e.tel)}">📞 Corsini 24h</a><a class="btn green" href="${waLink(e.tel)}" target="_blank">💬 WhatsApp</a></div><p class="muted small" style="margin-top:-4px">${esc(e.nome)} · ${fmtTel(e.tel)} · fala português</p>`).join('');
@@ -377,17 +388,19 @@ Views.ajuda = () => {
   html += `<h2>O que fazer se…</h2><div class="card">${EMERGENCIA.oqueFazer.map(x => `<details><summary>${esc(x.t)}</summary><p class="small">${esc(x.d)}</p></details>`).join('')}</div>`;
   html += `<h2>Outros telefones</h2><div class="card"><ul class="clean">${[...EMERGENCIA.locais.slice(2), ...EMERGENCIA.brasil, ...VIAGEM.emergencia.slice(2)].map(e => `<li><div class="row"><div><b>${esc(e.nome)}</b><div class="muted small">${esc(e.desc || '')}</div></div><a class="btn secondary sm" href="${telLink(e.tel)}">${esc(fmtTel(e.tel))}</a></div></li>`).join('')}</ul></div>`;
   html += `<div class="card sand"><b>Farmácias</b><p class="small">${esc(EMERGENCIA.farmacia)}</p><b>Hospitais</b><p class="small">${esc(EMERGENCIA.hospitais)}</p></div>`;
+  html += `<a class="btn outline" href="#localizacao">📍 Compartilhar localização em tempo real</a>`;
+  html += await sosHistoricoHtml();
   return { title: 'Ajuda', html, nav: 'mais' };
 };
 function enviarLocalizacao() {
   const cfg = Cfg.get(); if (!cfg.familiaTel) return toast('Cadastre o telefone da família em Configurações');
-  if (!navigator.geolocation) return toast('Sem GPS neste aparelho');
   toast('Buscando localização…');
-  navigator.geolocation.getCurrentPosition(p => {
-    const { latitude: la, longitude: lo } = p.coords;
-    const msg = `Minha localização agora: https://maps.google.com/?q=${la.toFixed(5)},${lo.toFixed(5)}`;
-    window.open(waLink(cfg.familiaTel, msg), '_blank');
-  }, () => toast('Não consegui pegar o GPS. Ative a Localização para o Safari em Ajustes.'), { enableHighAccuracy: true, timeout: 15000 });
+  Pos.agora(12000).then(p => {
+    if (!p) return toast('Não consegui pegar o GPS. Ative a Localização em Ajustes.');
+    const l = descreverLocal(p.lat, p.lon); const idade = Math.round((Date.now() - p.t) / 60000);
+    const msg = `📍 Estou aqui${l ? ': ' + l.nome : ''}${idade > 2 ? ` (há ${idade} min)` : ''}\n${mapsLink(p.lat, p.lon)}`;
+    window.location.href = waLink(cfg.familiaTel, msg);
+  });
 }
 
 /* ---- Ficha médica ---- */
@@ -437,7 +450,7 @@ function salvarFicha() {
 Views.documentos = async () => {
   const cfg = Cfg.get();
   if (cfg.pin && sessionStorage.getItem('pinok') !== cfg.pin) {
-    return { title: 'Documentos', nav: 'mais', html: `<div class="card"><h2 style="margin-top:0">Digite o PIN</h2><input id="pin" inputmode="numeric" type="password" placeholder="••••" style="font-size:1.6rem;text-align:center;letter-spacing:8px"><button class="btn" onclick="(function(){ if ($('#pin').value === Cfg.get().pin) { sessionStorage.setItem('pinok', $('#pin').value); render(); } else toast('PIN incorreto'); })()">Abrir</button></div>` };
+    return { title: 'Documentos', nav: 'mais', html: `<div class="card"><h2 style="margin-top:0">Digite o PIN</h2><input id="pin" inputmode="numeric" type="password" placeholder="••••" style="font-size:1.6rem;text-align:center;letter-spacing:8px"><button class="btn" onclick="(function(){ if ($('#pin').value === Cfg.get().pin) { sessionStorage.setItem('pinok', $('#pin').value); render(true); } else toast('PIN incorreto'); })()">Abrir</button></div>` };
   }
   const docs = await DB.all();
   const html = `<p class="muted">Fotografe passaporte, cartão de vacina, seguro, cartões, receitas. Ficam guardados só neste celular, para mostrar quando precisar.</p>
@@ -453,7 +466,7 @@ async function addDoc(input) {
   toast('Guardando…');
   const blob = await reduzirImagem(file, 1800);
   await DB.put({ id: 'd' + Date.now(), titulo, blob, criado: Date.now() });
-  render();
+  render(true);
 }
 function reduzirImagem(file, max) {
   return new Promise(res => {
@@ -471,8 +484,8 @@ function reduzirImagem(file, max) {
 async function verDoc(id) {
   const d = (await DB.all()).find(x => x.id === id); if (!d) return;
   const o = overlay(`<div class="docview" style="text-align:center"><h2>${esc(d.titulo)}</h2><img src="${URL.createObjectURL(d.blob)}" alt=""><div class="row" style="margin-top:12px"><button class="btn secondary" id="d-ren">Renomear</button><button class="btn outline" id="d-del">Excluir</button></div></div>`);
-  $('#d-del', o).onclick = async () => { if (confirm('Excluir "' + d.titulo + '"?')) { await DB.del(id); o.remove(); render(); } };
-  $('#d-ren', o).onclick = async () => { const t = prompt('Novo nome', d.titulo); if (t) { d.titulo = t; await DB.put(d); o.remove(); render(); } };
+  $('#d-del', o).onclick = async () => { if (confirm('Excluir "' + d.titulo + '"?')) { await DB.del(id); o.remove(); render(true); } };
+  $('#d-ren', o).onclick = async () => { const t = prompt('Novo nome', d.titulo); if (t) { d.titulo = t; await DB.put(d); o.remove(); render(true); } };
 }
 
 /* ---- Dinheiro ---- */
@@ -501,7 +514,7 @@ function ligarConversor() {
 }
 async function atualizarCotacao() {
   if (!navigator.onLine) return toast('Sem internet agora. Usando a última cotação.');
-  try { const j = await (await fetch('https://open.er-api.com/v6/latest/USD')).json(); const r = { USD_EGP: j.rates.EGP, USD_BRL: j.rates.BRL, em: new Date().toLocaleDateString('pt-BR') }; Rates.set(r); render(); toast('Cotação atualizada'); } catch { toast('Não consegui atualizar'); }
+  try { const j = await (await fetch('https://open.er-api.com/v6/latest/USD')).json(); const r = { USD_EGP: j.rates.EGP, USD_BRL: j.rates.BRL, em: new Date().toLocaleDateString('pt-BR') }; Rates.set(r); render(true); toast('Cotação atualizada'); } catch { toast('Não consegui atualizar'); }
 }
 function gastosHtml() {
   const r = Rates.get(); const l = Gastos.list();
@@ -509,9 +522,9 @@ function gastosHtml() {
   const total = l.reduce((s, g) => s + brl(g), 0);
   return `<div class="card"><div class="row"><input id="g-valor" inputmode="decimal" placeholder="Valor"><select id="g-moeda" style="flex:0 0 90px"><option>EGP</option><option>USD</option><option>BRL</option></select></div><input id="g-desc" placeholder="O que foi (ex.: lenço no bazar)" style="margin-top:8px"><button class="btn secondary" onclick="addGasto()">＋ Anotar gasto</button>
   ${l.slice().reverse().map(g => `<div class="gasto"><span>${esc(g.desc)} <span class="muted small">${g.data}</span></span><b>${g.valor} ${g.moeda} <span class="muted small">≈ R$ ${brl(g).toFixed(0)}</span></b></div>`).join('')}
-  ${l.length ? `<div class="kv" style="margin-top:8px"><span><b>Total</b></span><b>≈ R$ ${total.toFixed(2)}</b></div><button class="btn outline sm" onclick="if(confirm('Apagar todos os gastos?')){Gastos.save([]);render()}">Limpar</button>` : ''}</div>`;
+  ${l.length ? `<div class="kv" style="margin-top:8px"><span><b>Total</b></span><b>≈ R$ ${total.toFixed(2)}</b></div><button class="btn outline sm" onclick="if(confirm('Apagar todos os gastos?')){Gastos.save([]);render(true)}">Limpar</button>` : ''}</div>`;
 }
-function addGasto() { const v = parseFloat($('#g-valor').value.replace(',', '.')); if (!v) return toast('Digite o valor'); const l = Gastos.list(); l.push({ valor: v, moeda: $('#g-moeda').value, desc: $('#g-desc').value.trim() || 'Gasto', data: fmtDataCurta(hojeISO()) }); Gastos.save(l); render(); }
+function addGasto() { const v = parseFloat($('#g-valor').value.replace(',', '.')); if (!v) return toast('Digite o valor'); const l = Gastos.list(); l.push({ valor: v, moeda: $('#g-moeda').value, desc: $('#g-desc').value.trim() || 'Gasto', data: fmtDataCurta(hojeISO()) }); Gastos.save(l); render(true); }
 
 /* ---- Comida, cultura, mala ---- */
 Views.comida = () => ({ title: 'Comida', nav: 'mais', html: `<div class="card red"><b>Regras de ouro</b><ul class="dots">${COMIDA.regras.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div><h2>O que pedir</h2>${COMIDA.pratos.map(p => `<div class="card"><b>${esc(p.nome)}</b><p class="small">${esc(p.desc)}</p></div>`).join('')}<a class="btn secondary" href="#frases/${encodeURIComponent('Restaurante')}">Frases para o restaurante</a>` });
@@ -538,8 +551,8 @@ Views.familia = () => {
 
 /* ---- Mais ---- */
 Views.mais = () => {
-  const itens = [['remedios', '💊', 'Remédios'], ['documentos', '🛂', 'Documentos'], ['ficha', '🩺', 'Ficha médica'], ['dinheiro', '💵', 'Dinheiro'], ['comida', '🍽️', 'Comida'], ['cultura', '🧕', 'Cultura e roupa'], ['familia', '💚', 'Família'], ['mala', '🧳', 'Mala'], ['guia/fotos', '📸', 'Fotografia'], ['ajuda', '🆘', 'Ajuda'], ['config', '⚙️', 'Configurações']];
-  return { title: 'Mais', html: `<div class="grid2">${itens.map(([h, i, t]) => `<a class="btn secondary" href="#${h}"><span class="ico">${i}</span>${t}</a>`).join('')}</div><p class="muted small" style="margin-top:20px;text-align:center">Eu falei Faraó · versão 1 · funciona sem internet depois de aberto uma vez.</p>` };
+  const itens = [['album', '🖼️', 'Fotos da viagem'], ['camera', '📷', 'Traduzir com câmera'], ['localizacao', '📍', 'Localização ao vivo'], ['offline', '📶', 'Usar sem internet'], ['remedios', '💊', 'Remédios'], ['documentos', '🛂', 'Documentos'], ['ficha', '🩺', 'Ficha médica'], ['dinheiro', '💵', 'Dinheiro'], ['comida', '🍽️', 'Comida'], ['cultura', '🧕', 'Cultura e roupa'], ['familia', '💚', 'Família'], ['mala', '🧳', 'Mala'], ['guia/fotos', '📸', 'Fotografia'], ['ajuda', '🆘', 'Ajuda'], ['config', '⚙️', 'Configurações']];
+  return { title: 'Mais', html: `<div class="grid2">${itens.map(([h, i, t]) => `<a class="btn secondary" href="#${h}"><span class="ico">${i}</span>${t}</a>`).join('')}</div><p class="muted small" style="margin-top:20px;text-align:center">Eu falei Faraó · versão 2 · funciona sem internet depois de aberto uma vez.</p>` };
 };
 
 /* ---- Configurações ---- */
@@ -548,6 +561,8 @@ Views.config = () => {
   const html = `<div class="card"><label class="f">Nome dela</label><input id="k-nome" value="${esc(c.nome)}"><label class="f">Companheira de viagem</label><input id="k-amiga" value="${esc(c.amiga)}">
   <label class="f">Nome do contato da família</label><input id="k-fn" value="${esc(c.familiaNome)}"><label class="f">WhatsApp da família (com +55 e DDD)</label><input id="k-ft" value="${esc(c.familiaTel)}" inputmode="tel" placeholder="+5511999999999">
   <label class="f">PIN para Documentos (4 números, ou vazio)</label><input id="k-pin" value="${esc(c.pin)}" inputmode="numeric" maxlength="6">
+  <label class="f">Chave do CallMeBot (aviso automático de SOS no WhatsApp)</label><input id="k-cmb" value="${esc(c.callmebot)}" placeholder="opcional" autocomplete="off">
+  <p class="muted small">Com essa chave, o SOS manda sozinho uma mensagem com a localização para o WhatsApp de ${esc(c.familiaNome)}, sem ela precisar tocar em nada. Veja como obter em Localização ao vivo.</p>
   <button class="btn" onclick="salvarCfg()">Salvar</button></div>
   <h2>Áudios sem internet</h2><div class="card small"><p id="audios-status">Verificando…</p><button class="btn secondary" onclick="baixarAudios(false)">⬇️ Baixar todos os áudios agora</button><p class="muted">São cerca de 7 MB. Faça no wi-fi antes de viajar.</p></div>
   <h2>Instalar no iPhone</h2><div class="card small"><ol style="padding-left:20px;margin:0"><li>Abra este endereço no <b>Safari</b>.</li><li>Toque no botão de compartilhar (quadrado com seta para cima).</li><li>Toque em <b>"Adicionar à Tela de Início"</b> e depois em Adicionar.</li></ol><p>O ícone "Eu falei Faraó" aparece como um aplicativo e funciona sem internet.</p></div>
@@ -556,7 +571,7 @@ Views.config = () => {
   <label class="f">Simular data (para testar; deixe vazio na viagem)</label><input id="k-dbg" value="${esc(Store.get('debugDate', '') || '')}" placeholder="2026-10-21"><button class="btn secondary sm" onclick="Store.set('debugDate', $('#k-dbg').value.trim()||null); go('hoje')">Aplicar</button></div>`;
   return { title: 'Configurações', html, nav: 'mais', after: async () => { const el = $('#audios-status'); if (el) el.innerHTML = statusAudiosTexto(await audiosGuardados()); } };
 };
-function salvarCfg() { Cfg.set({ nome: $('#k-nome').value.trim(), amiga: $('#k-amiga').value.trim(), familiaNome: $('#k-fn').value.trim() || 'Família', familiaTel: $('#k-ft').value.replace(/[^\d+]/g, ''), pin: $('#k-pin').value.trim() }); toast('Salvo'); }
+function salvarCfg() { Cfg.set({ nome: $('#k-nome').value.trim(), amiga: $('#k-amiga').value.trim(), familiaNome: $('#k-fn').value.trim() || 'Família', familiaTel: $('#k-ft').value.replace(/[^\d+]/g, ''), pin: $('#k-pin').value.trim(), callmebot: $('#k-cmb').value.trim() }); toast('Salvo'); }
 function gerarLink() {
   const data = { cfg: Cfg.get(), remedios: Rem.list(), ficha: Ficha.get() };
   const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(data))));

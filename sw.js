@@ -1,10 +1,11 @@
-const VERSION = 'farao-v5';
+const VERSION = 'farao-v6';
+const VENDOR_CACHE = 'farao-vendor-v1';
 const AUDIO_CACHE = 'farao-audio-v2';
-const SHELL = ['./', './index.html', './css/app.css', './js/db.js', './js/app.js', './js/data/roteiro.js', './js/data/lugares.js', './js/data/frases.js', './js/data/guias.js', './js/data/audios.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
+const SHELL = ['./', './index.html', './css/app.css', './js/db.js', './js/app.js', './js/data/roteiro.js', './js/data/lugares.js', './js/data/frases.js', './js/data/guias.js', './js/data/audios.js', './js/data/glossario.js', './js/geo.js', './js/exif.js', './js/sos.js', './js/localizacao.js', './js/album.js', './js/tradutor-camera.js', './js/offline.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION && k !== AUDIO_CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION && k !== AUDIO_CACHE && k !== VENDOR_CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
 // O Safari pede áudio em pedaços (Range). Monta a resposta 206 a partir do arquivo inteiro guardado.
@@ -46,6 +47,14 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (url.origin !== location.origin || e.request.method !== 'GET') return;
   if (url.pathname.includes('/audio/')) { e.respondWith(audio(e.request)); return; }
+  // Biblioteca de leitura de texto: guarda na primeira vez e depois usa do celular
+  if (url.pathname.includes('/vendor/')) {
+    e.respondWith(caches.open(VENDOR_CACHE).then(async c => {
+      const g = await c.match(e.request.url); if (g) return g;
+      const r = await fetch(e.request); if (r.status === 200) c.put(e.request.url, r.clone()); return r;
+    }));
+    return;
+  }
   e.respondWith(
     fetch(e.request).then(r => { if (r.status === 200) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); } return r; })
       .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
