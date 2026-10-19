@@ -22,10 +22,21 @@ const IDB = (() => {
       t.onerror = () => rej(t.error);
     });
   };
+  // Converte Blob/File em bytes antes de guardar, e de volta ao ler.
+  const empacotar = async obj => {
+    const o = { ...obj };
+    for (const [k, v] of Object.entries(o)) if (v instanceof Blob) o[k] = { __bytes: await v.arrayBuffer(), type: v.type || 'application/octet-stream', name: v.name || '' };
+    return o;
+  };
+  const desempacotar = o => {
+    if (!o) return o;
+    for (const [k, v] of Object.entries(o)) if (v && v.__bytes) o[k] = v.name ? new File([v.__bytes], v.name, { type: v.type }) : new Blob([v.__bytes], { type: v.type });
+    return o;
+  };
   return {
-    all: store => tx(store, 'readonly', st => st.getAll()).then(l => (l || []).sort((a, b) => (a.criado || 0) - (b.criado || 0))),
-    get: (store, id) => tx(store, 'readonly', st => st.get(id)),
-    put: (store, obj) => tx(store, 'readwrite', st => { st.put(obj); }),
+    all: store => tx(store, 'readonly', st => st.getAll()).then(l => (l || []).map(desempacotar).sort((a, b) => (a.criado || 0) - (b.criado || 0))),
+    get: (store, id) => tx(store, 'readonly', st => st.get(id)).then(desempacotar),
+    put: async (store, obj) => { const o = await empacotar(obj); return tx(store, 'readwrite', st => { st.put(o); }); },
     del: (store, id) => tx(store, 'readwrite', st => { st.delete(id); }),
     count: store => tx(store, 'readonly', st => st.count()),
   };
