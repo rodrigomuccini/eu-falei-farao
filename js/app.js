@@ -31,7 +31,80 @@ function speak(text, lang = 'pt-BR') {
   if (best) u.voice = best;
   speechSynthesis.speak(u);
 }
-function stopSpeak() { if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+function stopSpeak() { if ('speechSynthesis' in window) speechSynthesis.cancel(); pararAudio(); }
+
+/* ===== Áudio gravado (funciona com o iPhone no silencioso e sem internet) ===== */
+const PLAYER = new Audio();
+PLAYER.preload = 'auto';
+try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+let AUDIO_ATUAL = null, AUDIO_RESERVA = null;
+function tocar(src, reservaTexto, reservaLang) {
+  if (AUDIO_ATUAL === src && PLAYER.src) {
+    if (PLAYER.paused) PLAYER.play().catch(() => {}); else PLAYER.pause();
+    return;
+  }
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  AUDIO_ATUAL = src; AUDIO_RESERVA = reservaTexto ? [reservaTexto, reservaLang || 'pt-BR'] : null;
+  PLAYER.src = src;
+  PLAYER.currentTime = 0;
+  const p = PLAYER.play();
+  if (p) p.catch(err => {
+    if (err && err.name === 'NotAllowedError') return toast('Toque de novo para ouvir');
+    usarReserva();
+  });
+  atualizarPlayerUI();
+}
+function usarReserva() {
+  if (!AUDIO_RESERVA) return toast('Áudio indisponível agora. Abra com internet uma vez.');
+  const [t, l] = AUDIO_RESERVA; AUDIO_ATUAL = null; speak(t, l);
+}
+PLAYER.addEventListener('error', () => { if (AUDIO_ATUAL) usarReserva(); });
+function pararAudio() { PLAYER.pause(); if (AUDIO_ATUAL) { try { PLAYER.currentTime = 0; } catch {} } AUDIO_ATUAL = null; atualizarPlayerUI(); }
+function fmtTempo(t) { if (!isFinite(t)) return '0:00'; t = Math.floor(t); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); }
+function atualizarPlayerUI() {
+  document.querySelectorAll('[data-audio]').forEach(b => {
+    const ativo = b.dataset.audio === AUDIO_ATUAL;
+    const tocando = ativo && !PLAYER.paused;
+    b.classList.toggle('tocando', tocando);
+    if (b.dataset.rotulo) b.innerHTML = tocando ? '⏸ Pausar' : (ativo && PLAYER.currentTime > 0 ? '▶️ Continuar' : b.dataset.rotulo);
+    else b.textContent = tocando ? '⏸' : '🔊';
+  });
+  const bar = $('#player-bar');
+  if (bar) {
+    const ativo = bar.dataset.audio === AUDIO_ATUAL;
+    const d = PLAYER.duration, c = ativo ? PLAYER.currentTime : 0;
+    bar.max = isFinite(d) && ativo ? d : 100; bar.value = c;
+    $('#player-tempo').textContent = ativo && isFinite(d) ? `${fmtTempo(c)} / ${fmtTempo(d)}` : '';
+  }
+}
+['play', 'pause', 'timeupdate', 'loadedmetadata', 'ended'].forEach(ev => PLAYER.addEventListener(ev, atualizarPlayerUI));
+PLAYER.addEventListener('ended', () => { AUDIO_ATUAL = null; atualizarPlayerUI(); });
+function pularAudio(seg) { if (AUDIO_ATUAL) PLAYER.currentTime = Math.max(0, Math.min((PLAYER.duration || 0), PLAYER.currentTime + seg)); }
+
+/* Guardar todos os áudios no celular para usar sem internet */
+const AUDIO_CACHE = 'farao-audio-v1';
+async function audiosGuardados() {
+  if (!('caches' in window)) return 0;
+  try { const c = await caches.open(AUDIO_CACHE); const ks = await c.keys(); const set = new Set(ks.map(k => new URL(k.url).pathname)); return AUDIOS.filter(a => set.has(new URL(a, location.href).pathname)).length; } catch { return 0; }
+}
+let BAIXANDO = false;
+async function baixarAudios(silencioso) {
+  if (BAIXANDO || !('caches' in window) || !navigator.onLine) return;
+  BAIXANDO = true;
+  try {
+    const c = await caches.open(AUDIO_CACHE);
+    for (const a of AUDIOS) {
+      if (await c.match(new URL(a, location.href).href)) continue;
+      try { const r = await fetch(a); if (r.ok) await c.put(new URL(a, location.href).href, r); } catch {}
+      const el = $('#audios-status'); if (el) el.textContent = `Baixando áudios… ${await audiosGuardados()} de ${AUDIOS.length}`;
+    }
+  } finally { BAIXANDO = false; }
+  const n = await audiosGuardados();
+  const el = $('#audios-status'); if (el) el.innerHTML = statusAudiosTexto(n);
+  if (!silencioso) toast(n === AUDIOS.length ? 'Áudios guardados no celular' : 'Alguns áudios faltaram. Tente de novo no wi-fi.');
+}
+function statusAudiosTexto(n) { return n >= AUDIOS.length ? `✓ Todos os ${AUDIOS.length} áudios guardados. Funcionam sem internet.` : `${n} de ${AUDIOS.length} áudios guardados no celular.`; }
+window.addEventListener('load', () => setTimeout(() => baixarAudios(true), 4000));
 
 /* ===== Estado ===== */
 const Cfg = {
@@ -57,7 +130,7 @@ function overlay(html) {
 }
 function mostrarCartao(pt, ar, en, falar) {
   overlay(`<div class="big"><div class="ar">${esc(ar)}</div><div class="en">${esc(en)}</div><div class="pt">${esc(pt)}</div>
-  ${falar ? `<button class="btn nile" onclick="speak(${JSON.stringify(ar)}, 'ar-EG')">🔊 Falar em árabe</button>` : ''}
+  ${falar ? `<button class="btn nile" onclick="tocar('${falar}', ${esc(JSON.stringify(ar))}, 'ar-EG')">🔊 Falar em árabe</button>` : ''}
   <p class="muted small">Mostre esta tela para a pessoa.</p></div>`);
 }
 
@@ -150,14 +223,14 @@ async function clima(cidade, iso) {
 function hotelCard(h) {
   return `<div class="card"><b>🏨 ${esc(h.nome)}</b><div class="small">${esc(h.endereco)}</div><div class="muted small">${esc(h.regime)}</div>
   <div class="row" style="margin-top:10px">
-    <button class="btn secondary sm" onclick="mostrarCartao('Me leve a este endereço, por favor', ${JSON.stringify(h.enderecoAr)}, ${JSON.stringify(h.nome + ' — ' + h.endereco)}, false)">🚕 Mostrar ao taxista</button>
+    <button class="btn secondary sm" onclick="mostrarCartao('Me leve a este endereço, por favor', ${esc(JSON.stringify(h.enderecoAr))}, ${esc(JSON.stringify(h.nome + ' — ' + h.endereco))}, false)">🚕 Mostrar ao taxista</button>
     ${h.tel ? `<a class="btn secondary sm" href="${telLink(h.tel)}">📞 Ligar</a>` : ''}
     ${h.maps ? `<a class="btn secondary sm" href="${h.maps}" target="_blank">🗺️ Mapa</a>` : ''}
   </div>${h.telNota ? `<p class="muted small">${esc(h.telNota)}</p>` : ''}</div>`;
 }
 function checklistMala() {
   const done = Store.get('mala', {});
-  return MALA.map(c => `<div class="card"><b>${esc(c.cat)}</b>${c.itens.map(i => { const k = c.cat + '|' + i; return `<div class="check ${done[k] ? 'done' : ''}" onclick="toggleMala(${JSON.stringify(k)})"><div class="box">${done[k] ? '✓' : ''}</div><div class="label">${esc(i)}</div></div>`; }).join('')}</div>`).join('');
+  return MALA.map(c => `<div class="card"><b>${esc(c.cat)}</b>${c.itens.map(i => { const k = c.cat + '|' + i; return `<div class="check ${done[k] ? 'done' : ''}" onclick="toggleMala(${esc(JSON.stringify(k))})"><div class="box">${done[k] ? '✓' : ''}</div><div class="label">${esc(i)}</div></div>`; }).join('')}</div>`).join('');
 }
 function toggleMala(k) { const d = Store.get('mala', {}); if (d[k]) delete d[k]; else d[k] = 1; Store.set('mala', d); render(); }
 
@@ -248,7 +321,7 @@ Views.guia = (tab = 'lugares') => {
     const ordem = []; ROTEIRO.forEach(d => d.lugares.forEach(id => { if (!ordem.includes(id) && LUGARES[id]) ordem.push(id); }));
     html += `<p class="muted">Toque em um lugar e use "Ouvir" para escutar a história enquanto visita.</p>` + ordem.map(id => { const l = LUGARES[id]; const dia = ROTEIRO.find(d => d.lugares.includes(id)); return `<div class="card tap" onclick="go('lugar/${id}')"><div class="body"><b>${esc(l.nome)}</b><div class="muted small">${esc(l.regiao)} · Dia ${dia.n} (${fmtDataCurta(dia.data)})</div></div><span class="chev">›</span></div>`; }).join('');
   } else if (tab === 'faraos') {
-    html += FARAOS.map(f => `<div class="card"><div class="row"><div><b>${esc(f.nome)}</b><div class="muted small">${esc(f.epoca)}</div></div><button class="icobtn nile" style="flex:0 0 48px" onclick="speak(${JSON.stringify(f.nome + '. ' + f.texto)})">🔊</button></div><p class="small">${esc(f.texto)}</p></div>`).join('');
+    html += FARAOS.map((f, i) => `<div class="card"><div class="row"><div><b>${esc(f.nome)}</b><div class="muted small">${esc(f.epoca)}</div></div><button class="icobtn nile" style="flex:0 0 48px" data-audio="audio/faraos/${i}.m4a" onclick="tocar('audio/faraos/${i}.m4a', ${esc(JSON.stringify(f.nome + '. ' + f.texto))})">🔊</button></div><p class="small">${esc(f.texto)}</p></div>`).join('');
   } else if (tab === 'deuses') {
     html += DEUSES.map(f => `<div class="card"><b>${esc(f.nome)}</b><p class="small">${esc(f.texto)}</p></div>`).join('');
   } else {
@@ -260,7 +333,10 @@ Views.lugar = id => {
   const l = LUGARES[id]; if (!l) return Views.guia();
   const texto = `${l.nome}. ${l.epoca}. ${l.historia}`;
   const html = `<div class="hero"><div class="muted">${esc(l.regiao)} · ${esc(l.epoca)}</div><h1>${esc(l.nome)}</h1></div>
-  <div class="row"><button class="btn nile" onclick="speak(${JSON.stringify(texto)})">🔊 Ouvir a história</button><button class="btn secondary" style="flex:0 0 100px" onclick="stopSpeak()">⏹ Parar</button></div>
+  <div class="card nile player"><button class="btn nile" data-audio="audio/lugares/${id}.m4a" data-rotulo="🔊 Ouvir a história" onclick="tocar('audio/lugares/${id}.m4a', ${esc(JSON.stringify(texto))})">🔊 Ouvir a história</button>
+  <input type="range" id="player-bar" data-audio="audio/lugares/${id}.m4a" min="0" max="100" value="0" step="1" oninput="if(AUDIO_ATUAL===this.dataset.audio) PLAYER.currentTime=+this.value">
+  <div class="row small"><button class="btn secondary sm" onclick="pularAudio(-15)">⏪ 15s</button><span id="player-tempo" class="muted" style="text-align:center"></span><button class="btn secondary sm" onclick="pularAudio(15)">15s ⏩</button></div>
+  <p class="muted small" style="margin:6px 0 0">Funciona com o iPhone no silencioso. Aumente o volume pelos botões laterais.</p></div>
   <div class="card"><p>${esc(l.historia)}</p></div>
   <h2>O que não perder</h2><div class="card sand"><ul class="dots">${l.olhar.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
   <h2>📸 Foto</h2><div class="card"><p class="small">${esc(l.foto)}</p></div>
@@ -271,10 +347,10 @@ Views.lugar = id => {
 /* ---- Frases ---- */
 Views.frases = (cat) => {
   const cats = FRASES.map(c => c.cat); const atual = cat ? decodeURIComponent(cat) : cats[0];
-  const grupo = FRASES.find(c => c.cat === atual) || FRASES[0];
+  const grupo = FRASES.find(c => c.cat === atual) || FRASES[0]; const ci = FRASES.indexOf(grupo);
   let html = `<div class="card nile"><b>Traduzir qualquer coisa</b><p class="small">Para conversa ao vivo e para fotografar cardápios, use o Google Tradutor (instale e baixe os pacotes Português, Árabe e Inglês para funcionar sem internet).</p><div class="row"><a class="btn sm nile" href="https://translate.google.com/?sl=pt&tl=ar&op=translate" target="_blank">Abrir Tradutor</a><button class="btn sm secondary" onclick="traduzirTexto()">Escrever e traduzir</button></div></div>`;
   html += `<div class="tabs">${cats.map(c => `<button class="${c === atual ? 'active' : ''}" onclick="go('frases/${encodeURIComponent(c)}')">${esc(c)}</button>`).join('')}</div>`;
-  html += `<div class="card">${grupo.itens.map(f => `<div class="frase"><div class="body"><div class="pt">${esc(f.pt)}</div><div class="tr small">${esc(f.tr)}</div><div class="ar">${esc(f.ar)}</div></div><button class="icobtn nile" onclick="speak(${JSON.stringify(f.ar)}, 'ar-EG')">🔊</button><button class="icobtn" onclick="mostrarCartao(${JSON.stringify(f.pt)}, ${JSON.stringify(f.ar)}, ${JSON.stringify(f.en)}, true)">👁️</button></div>`).join('')}</div>
+  html += `<div class="card">${grupo.itens.map((f, ii) => `<div class="frase"><div class="body"><div class="pt">${esc(f.pt)}</div><div class="tr small">${esc(f.tr)}</div><div class="ar">${esc(f.ar)}</div></div><button class="icobtn nile" data-audio="audio/frases/${ci}_${ii}.m4a" onclick="tocar('audio/frases/${ci}_${ii}.m4a', ${esc(JSON.stringify(f.ar))}, 'ar-EG')">🔊</button><button class="icobtn" onclick="mostrarCartao(${esc(JSON.stringify(f.pt))}, ${esc(JSON.stringify(f.ar))}, ${esc(JSON.stringify(f.en))}, 'audio/frases/${ci}_${ii}.m4a')">👁️</button></div>`).join('')}</div>
   <p class="muted small">🔊 fala em árabe · 👁️ mostra a frase grande em árabe e inglês para a pessoa ler.</p>`;
   return { title: 'Frases', html, nav: 'frases' };
 };
@@ -470,11 +546,12 @@ Views.config = () => {
   <label class="f">Nome do contato da família</label><input id="k-fn" value="${esc(c.familiaNome)}"><label class="f">WhatsApp da família (com +55 e DDD)</label><input id="k-ft" value="${esc(c.familiaTel)}" inputmode="tel" placeholder="+5511999999999">
   <label class="f">PIN para Documentos (4 números, ou vazio)</label><input id="k-pin" value="${esc(c.pin)}" inputmode="numeric" maxlength="6">
   <button class="btn" onclick="salvarCfg()">Salvar</button></div>
+  <h2>Áudios sem internet</h2><div class="card small"><p id="audios-status">Verificando…</p><button class="btn secondary" onclick="baixarAudios(false)">⬇️ Baixar todos os áudios agora</button><p class="muted">São cerca de 7 MB. Faça no wi-fi antes de viajar.</p></div>
   <h2>Instalar no iPhone</h2><div class="card small"><ol style="padding-left:20px;margin:0"><li>Abra este endereço no <b>Safari</b>.</li><li>Toque no botão de compartilhar (quadrado com seta para cima).</li><li>Toque em <b>"Adicionar à Tela de Início"</b> e depois em Adicionar.</li></ol><p>O ícone "Eu falei Faraó" aparece como um aplicativo e funciona sem internet.</p></div>
   <h2>Configurar pelo computador</h2><div class="card small"><p>Preencha remédios, ficha médica e contatos aqui e gere um link. Ao abrir o link no iPhone, tudo é importado (documentos com foto não vão no link).</p><button class="btn secondary" onclick="gerarLink()">🔗 Gerar link de configuração</button></div>
   <h2>Dados</h2><div class="card small"><button class="btn outline" onclick="if(confirm('Apagar TUDO (remédios, ficha, documentos, gastos)?')){localStorage.clear();indexedDB.deleteDatabase('egito-mae');location.reload()}">Apagar todos os dados deste celular</button>
   <label class="f">Simular data (para testar; deixe vazio na viagem)</label><input id="k-dbg" value="${esc(Store.get('debugDate', '') || '')}" placeholder="2026-10-21"><button class="btn secondary sm" onclick="Store.set('debugDate', $('#k-dbg').value.trim()||null); go('hoje')">Aplicar</button></div>`;
-  return { title: 'Configurações', html, nav: 'mais' };
+  return { title: 'Configurações', html, nav: 'mais', after: async () => { const el = $('#audios-status'); if (el) el.innerHTML = statusAudiosTexto(await audiosGuardados()); } };
 };
 function salvarCfg() { Cfg.set({ nome: $('#k-nome').value.trim(), amiga: $('#k-amiga').value.trim(), familiaNome: $('#k-fn').value.trim() || 'Família', familiaTel: $('#k-ft').value.replace(/[^\d+]/g, ''), pin: $('#k-pin').value.trim() }); toast('Salvo'); }
 function gerarLink() {
