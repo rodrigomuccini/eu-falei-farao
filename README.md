@@ -13,6 +13,7 @@ Feito para iPhone, em português, funciona sem internet depois de aberto uma vez
 - `app/js/data/lugares.js` – guia histórico (20 lugares, faraós, deuses), escrito para ser ouvido
 - `app/js/data/frases.js` – frases em árabe egípcio com pronúncia e inglês
 - `app/js/data/guias.js` – emergência, ficha médica (condições/alergias em PT/EN/AR), dinheiro, comida, cultura, mala, fotografia
+- `app/audio/` – histórias, faraós e frases gravados em áudio (gerados por `tools/gerar-audios.js`)
 - `app/sw.js`, `app/manifest.json`, `app/icons/` – instalação como app e modo offline
 
 ## Rodar localmente
@@ -36,3 +37,11 @@ Qualquer hospedagem estática serve (GitHub Pages, Netlify, Vercel, Cloudflare P
 ## Configurar remédios e ficha pelo computador
 
 Abrir o app no computador, preencher Remédios, Ficha médica e Configurações (WhatsApp da família), depois Configurações → "Gerar link de configuração". Mandar o link pelo WhatsApp; ao abrir no iPhone, tudo é importado. Documentos com foto ficam só no celular.
+
+## Regenerar os áudios
+
+Depois de mudar textos em `app/js/data/lugares.js` ou `app/js/data/frases.js`, rode no Mac (vozes Luciana e Majed, e ffmpeg):
+
+```bash
+node tools/gerar-audios.js
+```

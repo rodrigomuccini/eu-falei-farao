@@ -111,3 +111,6 @@ details[open] summary::after { content: '−'; }
 .hero .muted { color: #f3e3bf; }
 .counter { font-size: 2.4rem; font-weight: 800; }
 .gasto { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.player input[type=range] { width: 100%; margin: 6px 0; accent-color: var(--nile); height: 32px; padding: 0; border: 0; background: transparent; }
+.player .row .btn.sm { flex: 0 0 auto; }
+.icobtn.tocando { background: var(--gold); color: #2a1d06; }
