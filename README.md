@@ -13,6 +13,12 @@ Feito para iPhone, em português, funciona sem internet depois de aberto uma vez
 - `app/js/data/lugares.js` – guia histórico (20 lugares, faraós, deuses), escrito para ser ouvido
 - `app/js/data/frases.js` – frases em árabe egípcio com pronúncia e inglês
 - `app/js/data/guias.js` – emergência, ficha médica (condições/alergias em PT/EN/AR), dinheiro, comida, cultura, mala, fotografia
+- `app/js/sos.js` – SOS: selfie automática, áudio de 30 s, localização, aviso automático (CallMeBot), WhatsApp, SMS
+- `app/js/localizacao.js` – guia de localização ao vivo pelo Google Maps
+- `app/js/album.js`, `app/js/exif.js` – álbum da viagem por dia e lugar, exportação KML para o Google Earth
+- `app/js/tradutor-camera.js`, `app/js/data/glossario.js` – tradução por foto e câmera ao vivo (OCR Tesseract.js no celular, tradução MyMemory, glossário offline)
+- `app/js/offline.js` – tela "Usar sem internet", previsão e cotação guardadas, aviso de conexão
+- `app/vendor/tesseract/` – Tesseract.js 5.1.1 (Apache 2.0) com dados de árabe e inglês
 - `app/audio/` – histórias, faraós e frases gravados em áudio (gerados por `tools/gerar-audios.js`)
 - `app/sw.js`, `app/manifest.json`, `app/icons/` – instalação como app e modo offline
 

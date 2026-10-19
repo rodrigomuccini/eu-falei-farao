@@ -114,3 +114,24 @@ details[open] summary::after { content: '−'; }
 .player input[type=range] { width: 100%; margin: 6px 0; accent-color: var(--nile); height: 32px; padding: 0; border: 0; background: transparent; }
 .player .row .btn.sm { flex: 0 0 auto; }
 .icobtn.tocando { background: var(--gold); color: #2a1d06; }
+.check { cursor: pointer; user-select: none; -webkit-user-select: none; }
+.check:active { background: var(--sand); }
+.check.done .box { transform: scale(1.05); transition: transform .12s; }
+.sos-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 76px; border: 0; border-radius: 18px; background: var(--red); color: #fff; font-size: 1.35rem; font-weight: 800; margin: 12px 0; box-shadow: 0 6px 18px rgba(179, 38, 30, .35); letter-spacing: .5px; }
+.sos-btn:active { transform: scale(.98); }
+.sos-btn small { display: block; font-size: .8rem; font-weight: 600; opacity: .9; letter-spacing: 0; }
+.sos-tela .btn { margin: 6px 0; }
+.btn[disabled] { opacity: .45; }
+.fotogrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.foto { position: relative; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: var(--sand); aspect-ratio: 1; }
+.foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.foto span { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 5px; font-size: .62rem; font-weight: 700; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.65)); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+label.btn { cursor: pointer; }
+.cam-canvas { width: 100%; height: auto; border-radius: 12px; margin: 10px 0; display: block; }
+.vivo { position: fixed; inset: 0; z-index: 70; background: #000; }
+.vivo video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.vivo canvas { position: absolute; inset: 0; pointer-events: none; }
+.vivo-barra { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: rgba(0,0,0,.6); color: #fff; display: flex; flex-direction: column; gap: 8px; font-weight: 600; }
+.vivo-barra .row { gap: 8px; }
+.vivo-barra .btn { margin: 0; }
+#offline-aviso { position: sticky; top: 0; z-index: 20; background: #5c3e0a; color: #fff8e6; text-align: center; font-size: .85rem; font-weight: 700; padding: calc(4px + env(safe-area-inset-top)) 12px 4px; }
