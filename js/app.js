@@ -82,7 +82,7 @@ PLAYER.addEventListener('ended', () => { AUDIO_ATUAL = null; atualizarPlayerUI()
 function pularAudio(seg) { if (AUDIO_ATUAL) PLAYER.currentTime = Math.max(0, Math.min((PLAYER.duration || 0), PLAYER.currentTime + seg)); }
 
 /* Guardar todos os áudios no celular para usar sem internet */
-const AUDIO_CACHE = 'farao-audio-v1';
+const AUDIO_CACHE = 'farao-audio-v2';
 async function audiosGuardados() {
   if (!('caches' in window)) return 0;
   try { const c = await caches.open(AUDIO_CACHE); const ks = await c.keys(); const set = new Set(ks.map(k => new URL(k.url).pathname)); return AUDIOS.filter(a => set.has(new URL(a, location.href).pathname)).length; } catch { return 0; }
@@ -95,7 +95,7 @@ async function baixarAudios(silencioso) {
     const c = await caches.open(AUDIO_CACHE);
     for (const a of AUDIOS) {
       if (await c.match(new URL(a, location.href).href)) continue;
-      try { const r = await fetch(a); if (r.ok) await c.put(new URL(a, location.href).href, r); } catch {}
+      try { const r = await fetch(a, { cache: 'reload' }); if (r.ok) await c.put(new URL(a, location.href).href, r); } catch {}
       const el = $('#audios-status'); if (el) el.textContent = `Baixando áudios… ${await audiosGuardados()} de ${AUDIOS.length}`;
     }
   } finally { BAIXANDO = false; }
