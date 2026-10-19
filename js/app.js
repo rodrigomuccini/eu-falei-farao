@@ -36,7 +36,10 @@ function stopSpeak() { if ('speechSynthesis' in window) speechSynthesis.cancel()
 /* ===== Áudio gravado (funciona com o iPhone no silencioso e sem internet) ===== */
 const PLAYER = new Audio();
 PLAYER.preload = 'auto';
-try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+// Não fixar a sessão de áudio em "playback": no Safari isso impede gravar pelo microfone (SOS).
+// O <audio> do iPhone já toca com a chave de silencioso ligada.
+function sessaoAudio(tipo) { try { if (navigator.audioSession) navigator.audioSession.type = tipo; } catch {} }
+sessaoAudio('auto');
 let AUDIO_ATUAL = null, AUDIO_RESERVA = null;
 function tocar(src, reservaTexto, reservaLang) {
   if (AUDIO_ATUAL === src && PLAYER.src) {
@@ -551,7 +554,7 @@ Views.familia = () => {
 
 /* ---- Mais ---- */
 Views.mais = () => {
-  const itens = [['album', '🖼️', 'Fotos da viagem'], ['camera', '📷', 'Traduzir com câmera'], ['localizacao', '📍', 'Localização ao vivo'], ['offline', '📶', 'Usar sem internet'], ['remedios', '💊', 'Remédios'], ['documentos', '🛂', 'Documentos'], ['ficha', '🩺', 'Ficha médica'], ['dinheiro', '💵', 'Dinheiro'], ['comida', '🍽️', 'Comida'], ['cultura', '🧕', 'Cultura e roupa'], ['familia', '💚', 'Família'], ['mala', '🧳', 'Mala'], ['guia/fotos', '📸', 'Fotografia'], ['ajuda', '🆘', 'Ajuda'], ['config', '⚙️', 'Configurações']];
+  const itens = [['album', '🖼️', 'Fotos da viagem'], ['camera', '📷', 'Traduzir com câmera'], ['localizacao', '📍', 'Localização ao vivo'], ['offline', '📶', 'Usar sem internet'], ['diagnostico', '🩻', 'Diagnóstico'], ['remedios', '💊', 'Remédios'], ['documentos', '🛂', 'Documentos'], ['ficha', '🩺', 'Ficha médica'], ['dinheiro', '💵', 'Dinheiro'], ['comida', '🍽️', 'Comida'], ['cultura', '🧕', 'Cultura e roupa'], ['familia', '💚', 'Família'], ['mala', '🧳', 'Mala'], ['guia/fotos', '📸', 'Fotografia'], ['ajuda', '🆘', 'Ajuda'], ['config', '⚙️', 'Configurações']];
   return { title: 'Mais', html: `<div class="grid2">${itens.map(([h, i, t]) => `<a class="btn secondary" href="#${h}"><span class="ico">${i}</span>${t}</a>`).join('')}</div><p class="muted small" style="margin-top:20px;text-align:center">Eu falei Faraó · versão 2 · funciona sem internet depois de aberto uma vez.</p>` };
 };
 
@@ -564,6 +567,7 @@ Views.config = () => {
   <label class="f">Chave do CallMeBot (aviso automático de SOS no WhatsApp)</label><input id="k-cmb" value="${esc(c.callmebot)}" placeholder="opcional" autocomplete="off">
   <p class="muted small">Com essa chave, o SOS manda sozinho uma mensagem com a localização para o WhatsApp de ${esc(c.familiaNome)}, sem ela precisar tocar em nada. Veja como obter em Localização ao vivo.</p>
   <button class="btn" onclick="salvarCfg()">Salvar</button></div>
+  <a class="btn outline" href="#diagnostico">🩻 Diagnóstico (se algo não funcionar)</a>
   <h2>Áudios sem internet</h2><div class="card small"><p id="audios-status">Verificando…</p><button class="btn secondary" onclick="baixarAudios(false)">⬇️ Baixar todos os áudios agora</button><p class="muted">São cerca de 7 MB. Faça no wi-fi antes de viajar.</p></div>
   <h2>Instalar no iPhone</h2><div class="card small"><ol style="padding-left:20px;margin:0"><li>Abra este endereço no <b>Safari</b>.</li><li>Toque no botão de compartilhar (quadrado com seta para cima).</li><li>Toque em <b>"Adicionar à Tela de Início"</b> e depois em Adicionar.</li></ol><p>O ícone "Eu falei Faraó" aparece como um aplicativo e funciona sem internet.</p></div>
   <h2>Configurar pelo computador</h2><div class="card small"><p>Preencha remédios, ficha médica e contatos aqui e gere um link. Ao abrir o link no iPhone, tudo é importado (documentos com foto não vão no link).</p><button class="btn secondary" onclick="gerarLink()">🔗 Gerar link de configuração</button></div>

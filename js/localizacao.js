@@ -3,30 +3,31 @@ Views.localizacao = () => {
   const cfg = Cfg.get(); const nome = esc(cfg.familiaNome || 'Rodrigo');
   const ult = Pos.ultima();
   const html = `
-  <div class="card nile"><b>Como funciona</b><p class="small">O ${nome} acompanha você em tempo real pelo <b>Google Maps</b> no celular dele, mesmo com o seu iPhone bloqueado no bolso. Você configura uma vez só, antes de viajar. Gasta um pouco mais de bateria: leve o carregador portátil.</p></div>
-
-  <h2>Para você (no seu iPhone)</h2>
-  <div class="card"><ol class="dots" style="padding-left:22px">
-    <li>Instale o app <b>Google Maps</b> e entre com a sua conta Google (o seu Gmail).</li>
-    <li>No Google Maps, toque na sua <b>foto</b> no canto de cima, à direita.</li>
-    <li>Toque em <b>Compartilhamento de local</b> e depois em <b>Novo compartilhamento</b>.</li>
-    <li>Escolha <b>Até você desativar</b>.</li>
-    <li>Escolha o ${nome} (pelo Gmail dele) e toque em <b>Compartilhar</b>.</li>
-    <li>No iPhone, abra <b>Ajustes → Google Maps → Localização</b> e marque <b>Sempre</b>. Deixe <b>Localização Precisa</b> ligada.</li>
-    <li>Em <b>Ajustes → Geral → Atualização em 2º Plano</b>, deixe o Google Maps ligado.</li>
+  <div class="card green"><b>✓ Vocês já usam o app Buscar</b><p class="small">O ${nome} vê você em tempo real no app <b>Buscar</b> do iPhone dele, mesmo com o seu celular bloqueado no bolso. Para continuar funcionando na viagem:</p>
+  <ol class="dots small" style="padding-left:22px">
+    <li>Deixe o iPhone com <b>Ajustes → [seu nome] → Buscar → Compartilhar Localização</b> ligado.</li>
+    <li>Em <b>Ajustes → Privacidade e Segurança → Serviços de Localização</b>, deixe ligado.</li>
+    <li>Não use o <b>Modo de Pouca Energia</b> o dia todo: ele atrasa a atualização. Leve carregador portátil.</li>
+    <li>O Buscar precisa de internet para atualizar. Com o chip da agência (só WhatsApp, Instagram e Facebook), ele pode não atualizar fora do wi-fi. Nesse caso, use o botão abaixo ou o SOS por SMS.</li>
   </ol>
-  <div class="row"><a class="btn nile sm" href="comgooglemaps://">Abrir Google Maps</a><a class="btn secondary sm" href="https://apps.apple.com/app/id585027354" target="_blank">Baixar Google Maps</a></div></div>
+  <a class="btn secondary sm" href="findmy://">Abrir o app Buscar</a></div>
 
-  <div class="card sand small"><b>Se o ${nome} tiver iPhone</b>, também dá para usar o app <b>Buscar</b> da Apple: abra Buscar → Pessoas → <b>+</b> → Compartilhar Localização → escolha o ${nome} → <b>Compartilhar Indefinidamente</b>.</div>
+  <details><summary>Alternativa: Google Maps (para ver também no computador)</summary>
+  <ol class="dots small" style="padding-left:22px">
+    <li>Instale o <b>Google Maps</b> e entre com o seu Gmail.</li>
+    <li>Toque na sua foto → <b>Compartilhamento de local</b> → <b>Novo compartilhamento</b> → <b>Até você desativar</b> → escolha o ${nome}.</li>
+    <li>Em <b>Ajustes → Google Maps → Localização</b>, marque <b>Sempre</b>.</li>
+  </ol>
+  <div class="row"><a class="btn nile sm" href="comgooglemaps://">Abrir Google Maps</a><a class="btn secondary sm" href="https://apps.apple.com/app/id585027354" target="_blank">Baixar Google Maps</a></div></details>
 
   <button class="btn green" onclick="enviarLocalizacao()">📍 Mandar minha localização agora pelo WhatsApp</button>
   ${ult ? `<p class="muted small">Última localização guardada no app: ${esc((descreverLocal(ult.lat, ult.lon) || {}).nome || '')}, ${new Date(ult.t).toLocaleString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (hora do Egito).</p>` : ''}
 
   <h2>Para o ${nome} (no celular dele)</h2>
   <div class="card small"><ol class="dots" style="padding-left:22px">
-    <li>Abra o <b>Google Maps</b> e toque na sua foto → <b>Compartilhamento de local</b>.</li>
-    <li>A foto dela aparece no mapa, atualizando sozinha. Toque nela para ver o endereço, a bateria do celular dela e o caminho até lá.</li>
-    <li>No computador, abra <b>maps.google.com</b> → menu ☰ → <b>Compartilhamento de local</b>.</li>
+    <li>Abra o app <b>Buscar</b> → aba <b>Pessoas</b> → toque no nome dela para ver no mapa e traçar o caminho.</li>
+    <li>Em <b>Notificar</b>, dá para receber aviso quando ela chegar ou sair de um lugar (por exemplo, do hotel).</li>
+    <li>No computador, a localização das pessoas não aparece em icloud.com. Use o iPhone ou o iPad.</li>
     <li><b>Google Earth</b> não mostra localização ao vivo. Para ver a viagem no Google Earth, use <b>Fotos da viagem → Mapa no Google Earth</b>, que gera um mapa com os lugares das fotos.</li>
   </ol></div>
 

@@ -1,5 +1,5 @@
 /* ===== Tradutor com câmera: foto com tradução sobreposta e modo ao vivo ===== */
-let OCR = null, OCR_CARREGANDO = null;
+let OCR = null, OCR_CARREGANDO = null, OCR_LANGS = [];
 const absUrl = p => new URL(p, location.href).href;
 function carregarScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
 
@@ -7,11 +7,18 @@ async function ocrWorker(progresso) {
   if (OCR) return OCR;
   if (OCR_CARREGANDO) return OCR_CARREGANDO;
   OCR_CARREGANDO = (async () => {
-    if (!window.Tesseract) await carregarScript('vendor/tesseract/tesseract.min.js');
-    const w = await Tesseract.createWorker(['ara', 'eng'], 1, {
+    if (!window.Tesseract) await comTempo(carregarScript('vendor/tesseract/tesseract.min.js'), 60000, 'não baixou a biblioteca de leitura');
+    const opcoes = {
       workerPath: absUrl('vendor/tesseract/worker.min.js'), corePath: absUrl('vendor/tesseract/core'), langPath: absUrl('vendor/tesseract/lang'),
-      workerBlobURL: false, logger: m => { if (progresso && m.status) progresso(m); },
-    });
+      workerBlobURL: false, cacheMethod: 'none', logger: m => { if (progresso && m.status) progresso(m); },
+      errorHandler: e => registrarErro('ocr-worker', e),
+    };
+    let w, ultimoErro;
+    for (const langs of [['eng', 'ara'], ['eng']]) {
+      try { w = await comTempo(Tesseract.createWorker(langs, 1, opcoes), 120000, 'a leitura de texto demorou demais para iniciar'); OCR_LANGS = langs; break; }
+      catch (e) { ultimoErro = e; registrarErro('ocr-iniciar ' + langs.join('+'), e); }
+    }
+    if (!w) throw ultimoErro;
     OCR = w; Store.set('ocrPronto', true); return w;
   })();
   try { return await OCR_CARREGANDO; } finally { OCR_CARREGANDO = null; }
@@ -34,6 +41,8 @@ function glossarioTraduz(t) {
 }
 async function traduzirLinha(t) {
   const de = temArabe(t) ? 'ar' : 'en';
+  const exato = GLOSSARIO.find(([o]) => o.toLowerCase() === t.toLowerCase().replace(/[.:!?،]+$/, '').trim());
+  if (exato) return exato[1];
   const cache = Store.get('tradCache', {}); const k = de + '|' + t;
   if (cache[k]) return cache[k];
   if (navigator.onLine) {
@@ -89,15 +98,16 @@ function ocrProgresso(m) {
 async function traduzirFoto(input) {
   const file = input.files && input.files[0]; input.value = ''; if (!file) return;
   const box = $('#cam-resultado'); box.innerHTML = '<div class="card">Preparando a foto…</div>';
-  const r = await reduzirPara(file, 1600, 0.9); if (!r) { box.innerHTML = '<div class="card red">Não consegui abrir a foto.</div>'; return; }
-  const img = await createImageBitmap(r.blob);
+  const r = await reduzirPara(file, 1400, 0.9);
+  if (!r) { registrarErro('foto-abrir', new Error(`tipo=${file.type} tamanho=${file.size}`)); box.innerHTML = '<div class="card red">Não consegui abrir esta foto. Tente tirar a foto de novo pelo botão Fotografar e traduzir.</div>'; return; }
+  let img; try { img = await createImageBitmap(r.blob); } catch { img = await new Promise((ok, falha) => { const i = new Image(); i.onload = () => ok(i); i.onerror = falha; i.src = URL.createObjectURL(r.blob); }); }
   const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; c.className = 'cam-canvas';
   const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
   box.innerHTML = ''; box.appendChild(c);
   const lista = document.createElement('div'); lista.className = 'card'; lista.innerHTML = '<p class="small" id="ocr-status2">Lendo o texto…</p>'; box.appendChild(lista);
   try {
     const w = await ocrWorker(ocrProgresso);
-    const { data } = await w.recognize(c, {}, { blocks: true });
+    const { data } = await comTempo(w.recognize(c, {}, { blocks: true }), 120000, 'a leitura do texto demorou demais');
     const linhas = linhasDe(data);
     const st = $('#ocr-status'); if (st) st.textContent = '✓ Leitura de texto pronta, funciona sem internet.';
     if (!linhas.length) { lista.innerHTML = '<p>Não encontrei texto. Chegue mais perto e deixe o texto reto e bem iluminado.</p>'; return; }
@@ -108,7 +118,11 @@ async function traduzirFoto(input) {
     lista.innerHTML = `<b>Texto encontrado</b><ul class="clean">${linhas.map(l => `<li><div class="${temArabe(l.text) ? 'ar' : ''}" style="${temArabe(l.text) ? 'font-size:1.2rem' : ''}">${esc(l.text)}</div><div><b>${esc(l.tr || '')}</b></div></li>`).join('')}</ul>
       <a class="btn secondary sm" href="https://translate.google.com/?sl=auto&tl=pt&text=${encodeURIComponent(todo.slice(0, 1500))}&op=translate" target="_blank">Ver no Google Tradutor</a>`;
   } catch (e) {
-    lista.innerHTML = `<p>Não consegui ler o texto agora${navigator.onLine ? '' : ' (na primeira vez precisa de internet para preparar a leitura)'}.</p>`;
+    registrarErro('ocr-foto', e);
+    lista.innerHTML = `<p>Não consegui ler o texto agora${navigator.onLine ? '' : ' (na primeira vez precisa de internet para preparar a leitura)'}.</p>
+      <p class="muted small">Detalhe: ${esc(erroTexto(e))}</p>
+      <a class="btn secondary sm" href="https://translate.google.com/?sl=auto&tl=pt&op=images" target="_blank">Traduzir a foto no Google Tradutor</a>
+      <a class="btn outline sm" href="#diagnostico">Rodar diagnóstico</a>`;
   }
 }
 
@@ -122,13 +136,18 @@ async function cameraAoVivo() {
   Object.assign(VIVO, { ativo: true, pausado: false, linhas: [], ultimo: null });
   $('#vivo-pausa').onclick = () => { VIVO.pausado = !VIVO.pausado; const v = $('#vivo-video'); if (VIVO.pausado) { v.pause(); $('#vivo-pausa').textContent = '▶️ Continuar'; } else { v.play(); $('#vivo-pausa').textContent = '⏸ Congelar'; vivoLoop(); } };
   try {
-    VIVO.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error('câmera indisponível neste navegador'), { name: 'SemSuporte' });
+    VIVO.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
     const v = $('#vivo-video'); v.srcObject = VIVO.stream; await v.play().catch(() => {});
     $('#vivo-status').textContent = 'Preparando a leitura de texto…';
     await ocrWorker(ocrProgresso);
     $('#vivo-status').textContent = 'Aponte para o texto e segure firme';
     vivoLoop();
-  } catch (e) { $('#vivo-status').textContent = 'Não consegui abrir a câmera. Em Ajustes, permita a câmera para o app.'; }
+  } catch (e) {
+    registrarErro('camera-ao-vivo', e);
+    const st = $('#vivo-status'); if (st) st.innerHTML = `${esc(explicarErroMidia(e, 'câmera'))}<br><span style="opacity:.75;font-size:.8rem">Detalhe: ${esc(erroTexto(e))}</span>`;
+    const bar = $('.vivo-barra'); if (bar && !$('#vivo-plano-b')) bar.insertAdjacentHTML('beforeend', `<label class="btn" id="vivo-plano-b"><input type="file" accept="image/*" capture="environment" hidden onchange="fecharVivo(); traduzirFoto(this)">📸 Usar a câmera do iPhone (foto)</label>`);
+  }
 }
 async function vivoLoop() {
   if (!VIVO.ativo || VIVO.pausado || VIVO.lendo) return;
