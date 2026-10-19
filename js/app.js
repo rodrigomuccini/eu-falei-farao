@@ -80,7 +80,7 @@ function render() {
 function draw(r, view) {
   if (!r) return;
   $('#main').innerHTML = r.html;
-  $('#title').textContent = r.title || 'Egito';
+  $('#title').textContent = r.title || 'Eu falei Faraó';
   const back = $('#back');
   back.hidden = NAV.includes(view);
   back.onclick = () => history.length > 1 ? history.back() : go('hoje');
@@ -214,7 +214,7 @@ function exportarICS() {
     const hh = h.replace(':', '');
     ev.push(`BEGIN:VEVENT\r\nUID:${r.id}-${hh}@egito\r\nDTSTAMP:${ini}T000000Z\r\nDTSTART:${ini}T${hh}00\r\nDTEND:${ini}T${hh}00\r\nRRULE:FREQ=DAILY;UNTIL=${fim}T235959\r\nSUMMARY:💊 ${r.nome}${r.dose ? ' – ' + r.dose : ''}\r\nDESCRIPTION:${r.instrucao || ''} ${r.obs || ''}\r\nBEGIN:VALARM\r\nTRIGGER:PT0M\r\nACTION:DISPLAY\r\nDESCRIPTION:Hora do remédio: ${r.nome}\r\nEND:VALARM\r\nEND:VEVENT`);
   }));
-  const ics = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Egito com a Mae//PT\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Remédios – Egito\r\n${ev.join('\r\n')}\r\nEND:VCALENDAR`;
+  const ics = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Eu falei Farao//PT\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Remédios – Egito\r\n${ev.join('\r\n')}\r\nEND:VCALENDAR`;
   const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'remedios-egito.ics'; document.body.appendChild(a); a.click(); a.remove();
 }
@@ -460,7 +460,7 @@ Views.familia = () => {
 /* ---- Mais ---- */
 Views.mais = () => {
   const itens = [['remedios', '💊', 'Remédios'], ['documentos', '🛂', 'Documentos'], ['ficha', '🩺', 'Ficha médica'], ['dinheiro', '💵', 'Dinheiro'], ['comida', '🍽️', 'Comida'], ['cultura', '🧕', 'Cultura e roupa'], ['familia', '💚', 'Família'], ['mala', '🧳', 'Mala'], ['guia/fotos', '📸', 'Fotografia'], ['ajuda', '🆘', 'Ajuda'], ['config', '⚙️', 'Configurações']];
-  return { title: 'Mais', html: `<div class="grid2">${itens.map(([h, i, t]) => `<a class="btn secondary" href="#${h}"><span class="ico">${i}</span>${t}</a>`).join('')}</div><p class="muted small" style="margin-top:20px;text-align:center">Egito com a Mãe · versão 1 · funciona sem internet depois de aberto uma vez.</p>` };
+  return { title: 'Mais', html: `<div class="grid2">${itens.map(([h, i, t]) => `<a class="btn secondary" href="#${h}"><span class="ico">${i}</span>${t}</a>`).join('')}</div><p class="muted small" style="margin-top:20px;text-align:center">Eu falei Faraó · versão 1 · funciona sem internet depois de aberto uma vez.</p>` };
 };
 
 /* ---- Configurações ---- */
@@ -470,7 +470,7 @@ Views.config = () => {
   <label class="f">Nome do contato da família</label><input id="k-fn" value="${esc(c.familiaNome)}"><label class="f">WhatsApp da família (com +55 e DDD)</label><input id="k-ft" value="${esc(c.familiaTel)}" inputmode="tel" placeholder="+5511999999999">
   <label class="f">PIN para Documentos (4 números, ou vazio)</label><input id="k-pin" value="${esc(c.pin)}" inputmode="numeric" maxlength="6">
   <button class="btn" onclick="salvarCfg()">Salvar</button></div>
-  <h2>Instalar no iPhone</h2><div class="card small"><ol style="padding-left:20px;margin:0"><li>Abra este endereço no <b>Safari</b>.</li><li>Toque no botão de compartilhar (quadrado com seta para cima).</li><li>Toque em <b>"Adicionar à Tela de Início"</b> e depois em Adicionar.</li></ol><p>O ícone "Egito" aparece como um aplicativo e funciona sem internet.</p></div>
+  <h2>Instalar no iPhone</h2><div class="card small"><ol style="padding-left:20px;margin:0"><li>Abra este endereço no <b>Safari</b>.</li><li>Toque no botão de compartilhar (quadrado com seta para cima).</li><li>Toque em <b>"Adicionar à Tela de Início"</b> e depois em Adicionar.</li></ol><p>O ícone "Eu falei Faraó" aparece como um aplicativo e funciona sem internet.</p></div>
   <h2>Configurar pelo computador</h2><div class="card small"><p>Preencha remédios, ficha médica e contatos aqui e gere um link. Ao abrir o link no iPhone, tudo é importado (documentos com foto não vão no link).</p><button class="btn secondary" onclick="gerarLink()">🔗 Gerar link de configuração</button></div>
   <h2>Dados</h2><div class="card small"><button class="btn outline" onclick="if(confirm('Apagar TUDO (remédios, ficha, documentos, gastos)?')){localStorage.clear();indexedDB.deleteDatabase('egito-mae');location.reload()}">Apagar todos os dados deste celular</button>
   <label class="f">Simular data (para testar; deixe vazio na viagem)</label><input id="k-dbg" value="${esc(Store.get('debugDate', '') || '')}" placeholder="2026-10-21"><button class="btn secondary sm" onclick="Store.set('debugDate', $('#k-dbg').value.trim()||null); go('hoje')">Aplicar</button></div>`;
@@ -481,7 +481,7 @@ function gerarLink() {
   const data = { cfg: Cfg.get(), remedios: Rem.list(), ficha: Ficha.get() };
   const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
   const url = location.origin + location.pathname + '#import=' + b64;
-  if (navigator.share) navigator.share({ title: 'Configuração do app Egito', url }).catch(() => {});
+  if (navigator.share) navigator.share({ title: 'Configuração do app Eu falei Faraó', url }).catch(() => {});
   else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast('Link copiado. Mande pelo WhatsApp.'));
   else prompt('Copie o link:', url);
 }

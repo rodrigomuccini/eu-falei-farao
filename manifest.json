@@ -1,6 +1,6 @@
 {
-  "name": "Egito com a Mãe",
-  "short_name": "Egito",
+  "name": "Eu falei Faraó",
+  "short_name": "Eu falei Faraó",
   "description": "Companheiro de viagem: roteiro, guia histórico, frases, remédios, documentos e ajuda.",
   "start_url": "./index.html",
   "scope": "./",
