@@ -26,7 +26,7 @@ function sosUI(campo, html) { const el = document.getElementById('sos-' + campo)
 async function iniciarSOS() {
   if (SOS.ativo) return;
   const cfg = Cfg.get();
-  Object.assign(SOS, { ativo: true, id: 'sos' + Date.now(), selfie: null, audio: null, audioTipo: '', video: null, pos: null, stream: null, streamAudio: null, rec: null, autoEnviado: false });
+  Object.assign(SOS, { ativo: true, id: 'sos' + Date.now(), selfie: null, audio: null, audioTipo: '', video: null, pos: null, stream: null, streamAudio: null, rec: null, autoEnviado: false, envios: {}, fila: [], links: {}, ultimoEnvioPos: null });
   const o = document.createElement('div'); o.className = 'overlay sos-tela'; o.id = 'sos-overlay';
   o.innerHTML = `<h1 style="color:var(--red);margin:4px 0 2px">🆘 SOS ativado</h1>
     <p class="small" style="margin:0 0 10px">Fique calma. O app está gravando e localizando. Use os botões abaixo para avisar o ${esc(cfg.familiaNome)}.</p>
@@ -36,7 +36,7 @@ async function iniciarSOS() {
         <li id="sos-local">📍 Buscando localização…</li>
         <li id="sos-foto">📸 Abrindo a câmera…</li>
         <li id="sos-audio">🎙️ Preparando gravação…</li>
-        <li id="sos-auto">${cfg.callmebot ? '💬 Aviso automático no WhatsApp: aguardando localização…' : '💬 Aviso automático no WhatsApp: não configurado'}</li>
+        <li id="sos-auto">${cfg.ntfy || cfg.callmebot ? '🔔 Aviso automático: aguardando localização…' : '🔔 Aviso automático: não configurado'}</li>
       </ul>
     </div>
     <a class="btn green" id="sos-wa" href="#" onclick="return sosWhatsApp()">💬 1. WhatsApp para ${esc(cfg.familiaNome)} (localização)</a>
@@ -53,7 +53,8 @@ async function iniciarSOS() {
   // 1) Localização
   Pos.agora(12000).then(p => { if (p) { SOS.pos = p; sosLocalUI(); sosAutomatico(); } else sosUI('local', '📍 Sem GPS. Ative a Localização em Ajustes.'); salvarSOS(); });
   if (navigator.geolocation) SOS.watch = navigator.geolocation.watchPosition(p => { SOS.pos = Pos.guardar(p); sosLocalUI(); }, () => {}, { enableHighAccuracy: true, maximumAge: 10000 });
-  setTimeout(() => { if (!SOS.autoEnviado && SOS.ativo) sosAutomatico(); }, 15000);
+  setTimeout(() => { if (!SOS.autoEnviado && SOS.ativo) sosAutomatico(); }, 12000);
+  sosAcompanhar();
 
   // 2) Selfie e 3) Áudio: câmera e microfone pedidos separadamente
   sosMidia();
@@ -75,7 +76,7 @@ async function sosMidia() {
         const c = document.createElement('canvas'); c.width = v.videoWidth || 720; c.height = v.videoHeight || 960;
         c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
         SOS.selfie = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
-        sosUI('foto', '📸 Selfie tirada ✓'); sosHabilitarEnvio(); salvarSOS();
+        sosUI('foto', '📸 Selfie tirada ✓'); sosHabilitarEnvio(); salvarSOS(); sosEnviar('selfie');
       } catch (e) { registrarErro('sos-selfie', e); sosUI('foto', '📸 Não consegui tirar a selfie.'); }
       video.getTracks().forEach(t => t.stop());
     }
@@ -97,8 +98,8 @@ function sosPlanoB() {
 }
 function sosArquivo(input, tipo) {
   const f = input.files && input.files[0]; if (!f) return;
-  if (tipo === 'video') { SOS.video = f; sosUI('audio', `🎥 Vídeo gravado (${Math.round(f.size / 1048576 * 10) / 10} MB) ✓`); }
-  else { SOS.selfie = f; sosUI('foto', '📸 Selfie tirada ✓'); }
+  if (tipo === 'video') { SOS.video = f; sosUI('audio', `🎥 Vídeo gravado (${Math.round(f.size / 1048576 * 10) / 10} MB) ✓`); SOS.envios && delete SOS.envios.video; sosEnviar('video'); }
+  else { SOS.selfie = f; sosUI('foto', '📸 Selfie tirada ✓'); SOS.envios && delete SOS.envios.selfie; sosEnviar('selfie'); }
   sosHabilitarEnvio(); salvarSOS();
 }
 function sosHabilitarEnvio() { const b = document.getElementById('sos-share'); if (b) b.disabled = false; }
@@ -120,7 +121,7 @@ function sosGravarAudio(audioStream) {
     SOS.audio = new Blob(partes, { type: SOS.audioTipo });
     sosUI('audio', `🎙️ Áudio gravado (${Math.round(SOS.audio.size / 1024)} KB) ✓`);
     const b = document.getElementById('sos-parar'); if (b) b.hidden = true;
-    sosHabilitarEnvio(); salvarSOS();
+    sosHabilitarEnvio(); salvarSOS(); sosEnviar('audio');
   };
   rec.start(1000);
   let resta = SOS_SEGUNDOS;
@@ -129,13 +130,59 @@ function sosGravarAudio(audioStream) {
 }
 function sosPararAudio() { if (SOS.rec && SOS.rec.state === 'recording') SOS.rec.stop(); }
 
-// Alerta automático no WhatsApp (CallMeBot): só texto, sem precisar tocar em nada.
-function sosAutomatico() {
-  const cfg = Cfg.get(); if (SOS.autoEnviado || !cfg.callmebot) return;
-  if (!navigator.onLine) { sosUI('auto', '💬 Sem internet: use o SMS (botão 2).'); return; }
-  SOS.autoEnviado = true;
-  const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(cfg.familiaTel)}&text=${encodeURIComponent(sosMensagem())}&apikey=${encodeURIComponent(cfg.callmebot)}`;
-  fetch(url, { mode: 'no-cors' }).then(() => sosUI('auto', '💬 Aviso automático enviado ao WhatsApp ✓')).catch(() => { SOS.autoEnviado = false; sosUI('auto', '💬 Aviso automático falhou. Use os botões 1 e 2.'); });
+/* --- Alerta automático para o celular do Rodrigo (ntfy; CallMeBot como alternativa) --- */
+const NTFY = 'https://ntfy.sh';
+async function ntfyPublicar(dados) {
+  const c = Cfg.get(); if (!c.ntfy) return null;
+  const r = await comTempo(fetch(NTFY + '/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: c.ntfy, ...dados }) }), 20000, 'sem resposta do ntfy');
+  if (!r.ok) throw new Error('ntfy ' + r.status); return r.json();
+}
+async function ntfyArquivo(blob, nome, titulo) {
+  const c = Cfg.get(); if (!c.ntfy || !blob || blob.size > 14.5 * 1048576) return null;
+  const r = await comTempo(fetch(`${NTFY}/${encodeURIComponent(c.ntfy)}`, { method: 'PUT', body: blob, headers: { Filename: nome, Title: titulo, Priority: '4', Tags: 'paperclip' } }), 90000, 'envio do arquivo demorou demais');
+  if (!r.ok) throw new Error('ntfy arquivo ' + r.status);
+  const j = await r.json(); return j.attachment && j.attachment.url;
+}
+function sosAutoStatus() {
+  const partes = []; const e = SOS.envios || {};
+  if (e.alerta) partes.push('alerta ✓'); if (e.selfie) partes.push('selfie ✓'); if (e.audio) partes.push('áudio ✓'); if (e.video) partes.push('vídeo ✓');
+  const pend = (SOS.fila || []).length;
+  sosUI('auto', partes.length ? `🔔 Enviado sozinho ao ${esc(Cfg.get().familiaNome)}: ${partes.join(', ')}${pend ? ` · ${pend} esperando internet` : ''}` : (pend ? '🔔 Sem internet: envio automático assim que conectar. Use o SMS (botão 2).' : '🔔 Enviando aviso automático…'));
+}
+// Fila: tenta enviar; se falhar, guarda para quando a internet voltar.
+async function sosEnviar(tipo) {
+  const c = Cfg.get(); if (!c.ntfy && !c.callmebot) return;
+  SOS.envios = SOS.envios || {}; SOS.fila = (SOS.fila || []).filter(t => t !== tipo);
+  if (SOS.envios[tipo]) return;
+  try {
+    if (!navigator.onLine) throw new Error('offline');
+    if (tipo === 'alerta') {
+      const p = SOS.pos || Pos.ultima();
+      if (c.ntfy) await ntfyPublicar({ title: `SOS: ${c.nome || 'Mãe'} precisa de ajuda`, message: sosMensagem(), priority: 5, tags: ['rotating_light', 'sos'], ...(p ? { click: mapsLink(p.lat, p.lon), actions: [{ action: 'view', label: 'Abrir mapa', url: mapsLink(p.lat, p.lon) }] } : {}) });
+      else await fetch(`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(c.familiaTel)}&text=${encodeURIComponent(sosMensagem())}&apikey=${encodeURIComponent(c.callmebot)}`, { mode: 'no-cors' });
+    } else if (c.ntfy) {
+      const arq = tipo === 'selfie' ? [SOS.selfie, 'sos-selfie.jpg', 'SOS - selfie'] : tipo === 'audio' ? [SOS.audio, 'sos-audio.' + (/webm/.test(SOS.audioTipo) ? 'webm' : 'm4a'), 'SOS - audio de 30 s'] : [SOS.video, 'sos-video.mov', 'SOS - video'];
+      if (!arq[0]) return;
+      const url = await ntfyArquivo(...arq);
+      if (url) { SOS.links = SOS.links || {}; SOS.links[tipo] = url; }
+    } else return;
+    SOS.envios[tipo] = Date.now();
+  } catch (e) { if (e.message !== 'offline') registrarErro('sos-envio-' + tipo, e); SOS.fila.push(tipo); }
+  sosAutoStatus(); salvarSOS();
+}
+function sosAutomatico() { if (SOS.autoEnviado) return; SOS.autoEnviado = true; sosEnviar('alerta'); }
+window.addEventListener('online', () => { if (SOS.ativo || (SOS.fila && SOS.fila.length)) [...(SOS.fila || [])].forEach(sosEnviar); });
+
+// Atualiza a localização no celular do Rodrigo enquanto a tela de SOS estiver aberta
+function sosAcompanhar() {
+  clearInterval(SOS.acomp);
+  SOS.acomp = setInterval(async () => {
+    const c = Cfg.get(); if (!SOS.ativo || !c.ntfy || !SOS.pos || !navigator.onLine) return;
+    const u = SOS.ultimoEnvioPos;
+    if (u && distKm(u.lat, u.lon, SOS.pos.lat, SOS.pos.lon) < 0.03 && Date.now() - u.t < 10 * 60000) return;
+    const l = descreverLocal(SOS.pos.lat, SOS.pos.lon);
+    try { await ntfyPublicar({ title: 'SOS: localização atualizada', message: `${l ? l.nome : ''} · ±${SOS.pos.acc} m\n${mapsLink(SOS.pos.lat, SOS.pos.lon)}`, priority: 4, tags: ['round_pushpin'], click: mapsLink(SOS.pos.lat, SOS.pos.lon) }); SOS.ultimoEnvioPos = { ...SOS.pos, t: Date.now() }; } catch (e) { registrarErro('sos-acompanhar', e); }
+  }, 120000);
 }
 
 function sosWhatsApp() { const cfg = Cfg.get(); window.location.href = waLink(cfg.familiaTel, sosMensagem()); return false; }
@@ -156,7 +203,7 @@ async function sosCompartilhar() {
 }
 
 async function salvarSOS() {
-  try { await IDB.put('sos', { id: SOS.id, criado: Number(SOS.id.slice(3)), pos: SOS.pos, selfie: SOS.selfie, audio: SOS.audio, audioTipo: SOS.audioTipo, video: SOS.video || null }); } catch (e) { registrarErro('sos-salvar', e); }
+  try { await IDB.put('sos', { id: SOS.id, criado: Number(SOS.id.slice(3)), pos: SOS.pos, selfie: SOS.selfie, audio: SOS.audio, audioTipo: SOS.audioTipo, video: SOS.video || null, envios: SOS.envios || {}, fila: SOS.fila || [] }); } catch (e) { registrarErro('sos-salvar', e); }
 }
 
 function encerrarSOS() {
@@ -165,7 +212,7 @@ function encerrarSOS() {
   if (SOS.stream) SOS.stream.getTracks().forEach(t => t.stop());
   if (SOS.streamAudio) SOS.streamAudio.getTracks().forEach(t => t.stop());
   if (SOS.watch != null && navigator.geolocation) navigator.geolocation.clearWatch(SOS.watch);
-  clearInterval(SOS.timer);
+  clearInterval(SOS.timer); clearInterval(SOS.acomp);
   const o = document.getElementById('sos-overlay'); if (o) o.remove();
   SOS.ativo = false;
 }

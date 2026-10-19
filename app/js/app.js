@@ -116,7 +116,7 @@ window.addEventListener('load', () => setTimeout(() => baixarAudios(true), 4000)
 const SOS_TEL_PADRAO = '+5511987511415'; // Rodrigo
 const Cfg = {
   get() {
-    const c = Object.assign({ nome: '', amiga: 'Iracema', familiaNome: 'Rodrigo', familiaTel: '', pin: '', callmebot: '' }, Store.get('cfg', {}));
+    const c = Object.assign({ nome: '', amiga: 'Iracema', familiaNome: 'Rodrigo', familiaTel: '', pin: '', callmebot: '', ntfy: '' }, Store.get('cfg', {}));
     if (!c.familiaTel) { c.familiaTel = SOS_TEL_PADRAO; c.familiaNome = c.familiaNome || 'Rodrigo'; }
     return c;
   },
@@ -561,11 +561,13 @@ Views.mais = () => {
 /* ---- Configurações ---- */
 Views.config = () => {
   const c = Cfg.get();
-  const html = `<div class="card"><label class="f">Nome dela</label><input id="k-nome" value="${esc(c.nome)}"><label class="f">Companheira de viagem</label><input id="k-amiga" value="${esc(c.amiga)}">
+  const html = `<div class="card nile small"><b>Recebeu um link de configuração?</b> No WhatsApp, toque e segure no link → <b>Copiar</b>. Depois toque aqui:<button class="btn nile" onclick="colarConfiguracao()">📋 Colar e ativar configuração</button>${c.ntfy ? '<span>✓ Aviso automático do SOS ativo.</span>' : ''}</div>
+  <div class="card"><label class="f">Nome dela</label><input id="k-nome" value="${esc(c.nome)}"><label class="f">Companheira de viagem</label><input id="k-amiga" value="${esc(c.amiga)}">
   <label class="f">Nome do contato da família</label><input id="k-fn" value="${esc(c.familiaNome)}"><label class="f">WhatsApp da família (com +55 e DDD)</label><input id="k-ft" value="${esc(c.familiaTel)}" inputmode="tel" placeholder="+5511999999999">
   <label class="f">PIN para Documentos (4 números, ou vazio)</label><input id="k-pin" value="${esc(c.pin)}" inputmode="numeric" maxlength="6">
-  <label class="f">Chave do CallMeBot (aviso automático de SOS no WhatsApp)</label><input id="k-cmb" value="${esc(c.callmebot)}" placeholder="opcional" autocomplete="off">
-  <p class="muted small">Com essa chave, o SOS manda sozinho uma mensagem com a localização para o WhatsApp de ${esc(c.familiaNome)}, sem ela precisar tocar em nada. Veja como obter em Localização ao vivo.</p>
+  <label class="f">Canal secreto do aviso automático (ntfy)</label><input id="k-ntfy" value="${esc(c.ntfy)}" placeholder="vem pelo link de configuração" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <p class="muted small">Com o canal, o SOS manda sozinho para o celular de ${esc(c.familiaNome)} o alerta com a localização, a selfie e o áudio. Veja em Localização ao vivo.</p>
+  <label class="f">Chave do CallMeBot (alternativa, opcional)</label><input id="k-cmb" value="${esc(c.callmebot)}" placeholder="opcional" autocomplete="off">
   <button class="btn" onclick="salvarCfg()">Salvar</button></div>
   <a class="btn outline" href="#diagnostico">🩻 Diagnóstico (se algo não funcionar)</a>
   <h2>Áudios sem internet</h2><div class="card small"><p id="audios-status">Verificando…</p><button class="btn secondary" onclick="baixarAudios(false)">⬇️ Baixar todos os áudios agora</button><p class="muted">São cerca de 7 MB. Faça no wi-fi antes de viajar.</p></div>
@@ -575,7 +577,7 @@ Views.config = () => {
   <label class="f">Simular data (para testar; deixe vazio na viagem)</label><input id="k-dbg" value="${esc(Store.get('debugDate', '') || '')}" placeholder="2026-10-21"><button class="btn secondary sm" onclick="Store.set('debugDate', $('#k-dbg').value.trim()||null); go('hoje')">Aplicar</button></div>`;
   return { title: 'Configurações', html, nav: 'mais', after: async () => { const el = $('#audios-status'); if (el) el.innerHTML = statusAudiosTexto(await audiosGuardados()); } };
 };
-function salvarCfg() { Cfg.set({ nome: $('#k-nome').value.trim(), amiga: $('#k-amiga').value.trim(), familiaNome: $('#k-fn').value.trim() || 'Família', familiaTel: $('#k-ft').value.replace(/[^\d+]/g, ''), pin: $('#k-pin').value.trim(), callmebot: $('#k-cmb').value.trim() }); toast('Salvo'); }
+function salvarCfg() { Cfg.set({ nome: $('#k-nome').value.trim(), amiga: $('#k-amiga').value.trim(), familiaNome: $('#k-fn').value.trim() || 'Família', familiaTel: $('#k-ft').value.replace(/[^\d+]/g, ''), pin: $('#k-pin').value.trim(), callmebot: $('#k-cmb').value.trim(), ntfy: $('#k-ntfy').value.trim() }); toast('Salvo'); }
 function gerarLink() {
   const data = { cfg: Cfg.get(), remedios: Rem.list(), ficha: Ficha.get() };
   const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
@@ -584,11 +586,21 @@ function gerarLink() {
   else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast('Link copiado. Mande pelo WhatsApp.'));
   else prompt('Copie o link:', url);
 }
+function importarTexto(txt) {
+  const m = String(txt || '').match(/#import=([A-Za-z0-9+/=_-]+)/); if (!m) return false;
+  const data = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))));
+  if (data.cfg) Cfg.set({ ...Store.get('cfg', {}), ...data.cfg }); if (data.remedios) Rem.save(data.remedios); if (data.ficha) Ficha.set(data.ficha);
+  return true;
+}
 function importarDoLink() {
-  const m = location.hash.match(/^#import=(.+)$/); if (!m) return;
-  try {
-    const data = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
-    if (data.cfg) Cfg.set(data.cfg); if (data.remedios) Rem.save(data.remedios); if (data.ficha) Ficha.set(data.ficha);
-    history.replaceState(null, '', location.pathname + location.search + '#hoje'); toast('Configuração importada!');
-  } catch { toast('Link de configuração inválido'); }
+  if (!/^#import=/.test(location.hash)) return;
+  try { importarTexto(location.hash); history.replaceState(null, '', location.pathname + location.search + '#hoje'); toast('Configuração importada!'); }
+  catch { toast('Link de configuração inválido'); }
+}
+async function colarConfiguracao() {
+  let txt = '';
+  try { txt = await navigator.clipboard.readText(); } catch {}
+  if (!txt) txt = prompt('Cole aqui o link de configuração:') || '';
+  try { if (importarTexto(txt)) { toast('Configuração ativada!'); render(true); } else toast('Não encontrei um link de configuração. Copie o link inteiro e tente de novo.'); }
+  catch { toast('Link de configuração inválido'); }
 }
