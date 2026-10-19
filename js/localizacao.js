@@ -31,20 +31,25 @@ Views.localizacao = () => {
     <li><b>Google Earth</b> não mostra localização ao vivo. Para ver a viagem no Google Earth, use <b>Fotos da viagem → Mapa no Google Earth</b>, que gera um mapa com os lugares das fotos.</li>
   </ol></div>
 
-  <h3>Aviso automático de SOS no WhatsApp (opcional)</h3>
-  <div class="card small"><p>Sem isso, o SOS prepara a mensagem e ela toca em enviar. Com isso, o aviso com a localização chega no WhatsApp do ${nome} <b>sozinho</b>, assim que o SOS é tocado. Usa o serviço gratuito CallMeBot, que só envia texto.</p>
+  <h3>Aviso automático do SOS no celular do ${nome}</h3>
+  <div class="card small ${cfg.ntfy ? 'green' : ''}">${cfg.ntfy ? '<p><b>✓ Ativo neste celular.</b> Quando você tocar no SOS, o alerta com a localização, a selfie e o áudio chegam sozinhos no celular do ' + nome + '.</p>' : '<p><b>Ainda não ativado neste celular.</b> Abra o link de configuração que o ' + nome + ' mandar.</p>'}
+  <p>No celular do ${nome}, uma vez só:</p>
   <ol class="dots" style="padding-left:22px">
-    <li>No celular do ${nome}, abra <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank">callmebot.com</a> e veja o número atual do robô.</li>
-    <li>Salve esse número nos contatos.</li>
-    <li>Do WhatsApp do ${nome}, mande para esse contato: <b>I allow callmebot to send me messages</b></li>
-    <li>O robô responde com uma <b>apikey</b>. Coloque em <a href="#config">Configurações → Chave do CallMeBot</a>, no celular dela.</li>
+    <li>Instale o app <b>ntfy</b> (gratuito, sem cadastro).</li>
+    <li>Toque em <b>+</b>, digite o canal${cfg.ntfy ? ` <b style="user-select:all">${esc(cfg.ntfy)}</b>` : ' secreto'} e toque em <b>Subscribe</b>.</li>
+    <li>Permita as notificações. Em Ajustes → Notificações → ntfy, ligue <b>Notificações Sensíveis ao Tempo</b>, para tocar mesmo no modo Foco.</li>
   </ol>
-  <button class="btn secondary" onclick="testarAvisoAutomatico()" ${cfg.callmebot ? '' : 'disabled'}>🧪 Testar aviso automático</button></div>`;
+  <p class="muted">Selfie, áudio e vídeo ficam disponíveis por 3 horas no ntfy. Tudo também fica guardado neste celular, em Ajuda → SOS gravados. Precisa de internet: o chip da agência pode bloquear.</p>
+  <div class="row"><a class="btn secondary sm" href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank">ntfy na App Store</a><button class="btn nile sm" onclick="testarAvisoAutomatico()" ${cfg.ntfy || cfg.callmebot ? '' : 'disabled'}>🧪 Testar aviso</button></div></div>`;
   return { title: 'Localização ao vivo', html, nav: 'mais' };
 };
-function testarAvisoAutomatico() {
-  const cfg = Cfg.get(); if (!cfg.callmebot) return toast('Coloque a chave em Configurações');
-  const msg = 'Teste do app Eu falei Faraó: o aviso automático de SOS está funcionando.';
-  fetch(`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(cfg.familiaTel)}&text=${encodeURIComponent(msg)}&apikey=${encodeURIComponent(cfg.callmebot)}`, { mode: 'no-cors' })
-    .then(() => toast('Teste enviado. Confira o WhatsApp em até 1 minuto.')).catch(() => toast('Sem internet agora'));
+async function testarAvisoAutomatico() {
+  const cfg = Cfg.get();
+  if (!navigator.onLine) return toast('Sem internet agora');
+  try {
+    if (cfg.ntfy) await ntfyPublicar({ title: 'Teste do app Eu falei Faraó', message: 'O aviso automático do SOS está funcionando. Nada aconteceu, é só um teste.', priority: 3, tags: ['white_check_mark'] });
+    else if (cfg.callmebot) await fetch(`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(cfg.familiaTel)}&text=${encodeURIComponent('Teste do app Eu falei Faraó: aviso automático funcionando.')}&apikey=${encodeURIComponent(cfg.callmebot)}`, { mode: 'no-cors' });
+    else return toast('Aviso automático não configurado');
+    toast('Teste enviado. Confira o celular do ' + (cfg.familiaNome || 'Rodrigo'));
+  } catch (e) { registrarErro('teste-aviso', e); toast('Não consegui enviar: ' + erroTexto(e)); }
 }
