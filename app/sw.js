@@ -1,5 +1,5 @@
-const VERSION = 'farao-v3';
-const AUDIO_CACHE = 'farao-audio-v1';
+const VERSION = 'farao-v4';
+const AUDIO_CACHE = 'farao-audio-v2';
 const SHELL = ['./', './index.html', './css/app.css', './js/db.js', './js/app.js', './js/data/roteiro.js', './js/data/lugares.js', './js/data/frases.js', './js/data/guias.js', './js/data/audios.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
@@ -27,10 +27,10 @@ async function responderComRange(req, res) {
 
 async function audio(req) {
   const url = req.url.split('#')[0].split('?')[0];
-  const guardado = await caches.match(url);
+  const guardado = await (await caches.open(AUDIO_CACHE)).match(url);
   if (guardado) return responderComRange(req, guardado);
   try {
-    const inteiro = await fetch(url);
+    const inteiro = await fetch(url, { cache: 'reload' });
     if (inteiro.ok) {
       const c = await caches.open(AUDIO_CACHE);
       await c.put(url, inteiro.clone());
