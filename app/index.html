@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  <title>Egito com a Mãe</title>
+  <meta name="description" content="Companheiro de viagem ao Egito: roteiro, guia histórico, frases, remédios, documentos e ajuda.">
+  <meta name="theme-color" content="#c8962e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Egito">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="top">
+    <button class="back" id="back" hidden>‹ Voltar</button>
+    <div class="title" id="title">Egito</div>
+    <button class="sos" onclick="go('ajuda')">Ajuda</button>
+  </header>
+  <main id="main"></main>
+  <nav class="bottom">
+    <a href="#hoje" data-nav="hoje"><span class="ico">☀️</span>Hoje</a>
+    <a href="#roteiro" data-nav="roteiro"><span class="ico">🗓️</span>Roteiro</a>
+    <a href="#guia" data-nav="guia"><span class="ico">🏛️</span>Guia</a>
+    <a href="#frases" data-nav="frases"><span class="ico">💬</span>Frases</a>
+    <a href="#mais" data-nav="mais"><span class="ico">⋯</span>Mais</a>
+  </nav>
+  <script src="js/data/roteiro.js"></script>
+  <script src="js/data/lugares.js"></script>
+  <script src="js/data/frases.js"></script>
+  <script src="js/data/guias.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  </script>
+</body>
+</html>
