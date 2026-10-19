@@ -40,16 +40,34 @@ Views.localizacao = () => {
     <li>Permita as notificações. Em Ajustes → Notificações → ntfy, ligue <b>Notificações Sensíveis ao Tempo</b>, para tocar mesmo no modo Foco.</li>
   </ol>
   <p class="muted">Selfie, áudio e vídeo ficam disponíveis por 3 horas no ntfy. Tudo também fica guardado neste celular, em Ajuda → SOS gravados. Precisa de internet: o chip da agência pode bloquear.</p>
-  <div class="row"><a class="btn secondary sm" href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank">ntfy na App Store</a><button class="btn nile sm" onclick="testarAvisoAutomatico()" ${cfg.ntfy || cfg.callmebot ? '' : 'disabled'}>🧪 Testar aviso</button></div></div>`;
+  <div class="row"><a class="btn secondary sm" href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank">ntfy na App Store</a><button class="btn nile sm" onclick="testarAvisoAutomatico()" ${cfg.ntfy || cfg.callmebot ? '' : 'disabled'}>🧪 Testar aviso</button></div>
+  <div id="teste-aviso-resultado"></div></div>`;
   return { title: 'Localização ao vivo', html, nav: 'mais' };
 };
 async function testarAvisoAutomatico() {
-  const cfg = Cfg.get();
-  if (!navigator.onLine) return toast('Sem internet agora');
+  const cfg = Cfg.get(); const el = document.getElementById('teste-aviso-resultado');
+  const mostra = (cls, html) => { if (el) el.innerHTML = `<div class="card ${cls} small" style="margin-top:10px">${html}</div>`; else toast(html.replace(/<[^>]+>/g, '')); };
+  mostra('sand', 'Enviando teste…');
   try {
-    if (cfg.ntfy) await ntfyPublicar({ title: 'Teste do app Eu falei Faraó', message: 'O aviso automático do SOS está funcionando. Nada aconteceu, é só um teste.', priority: 3, tags: ['white_check_mark'] });
-    else if (cfg.callmebot) await fetch(`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(cfg.familiaTel)}&text=${encodeURIComponent('Teste do app Eu falei Faraó: aviso automático funcionando.')}&apikey=${encodeURIComponent(cfg.callmebot)}`, { mode: 'no-cors' });
-    else return toast('Aviso automático não configurado');
-    toast('Teste enviado. Confira o celular do ' + (cfg.familiaNome || 'Rodrigo'));
-  } catch (e) { registrarErro('teste-aviso', e); toast('Não consegui enviar: ' + erroTexto(e)); }
+    if (cfg.ntfy) {
+      const marca = 'teste-' + Date.now().toString(36);
+      const r = await ntfyPublicar({ title: 'Teste do app Eu falei Faraó', message: `O aviso automático do SOS está funcionando. É só um teste. (${marca})`, priority: 3, tags: ['white_check_mark'] });
+      // Confere no canal se a mensagem chegou de verdade
+      let confirmado = null;
+      for (let i = 0; i < 4 && !confirmado; i++) {
+        await new Promise(ok => setTimeout(ok, 1500 + i * 1000));
+        try { const t = await (await comTempo(fetch(`${NTFY}/${encodeURIComponent(cfg.ntfy)}/json?poll=1&since=5m&x=${Date.now()}`, { cache: 'no-store' }), 15000, 'sem resposta')).text(); confirmado = t.includes(marca); } catch { if (confirmado !== false) confirmado = null; }
+      }
+      const antes = r.falhas && r.falhas.length ? `<br><span class="muted">Antes falhou: ${esc(r.falhas.join(' | '))}</span>` : '';
+      if (confirmado) mostra('green', `<b>✓ Teste entregue</b> (forma: ${esc(r.via)}). Confira o celular do ${esc(cfg.familiaNome || 'Rodrigo')}.${antes}`);
+      else if (confirmado === false) mostra('red', `<b>A mensagem não chegou ao canal.</b> A rede deste iPhone parece bloquear o aviso. Tente no wi-fi e desligue VPN ou bloqueador de anúncios.${antes}<br>Canal: <b>${esc(cfg.ntfy)}</b>`);
+      else mostra('sand', `<b>Enviado, mas não deu para confirmar a entrega</b> (forma: ${esc(r.via)}). Pergunte ao ${esc(cfg.familiaNome || 'Rodrigo')} se chegou.${antes}`);
+    } else if (cfg.callmebot) {
+      await fetch(`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(cfg.familiaTel)}&text=${encodeURIComponent('Teste do app Eu falei Faraó: aviso automático funcionando.')}&apikey=${encodeURIComponent(cfg.callmebot)}`, { mode: 'no-cors' });
+      mostra('green', '✓ Teste enviado pelo CallMeBot.');
+    } else mostra('red', 'Aviso automático não configurado. Cole o link de configuração em Configurações.');
+  } catch (e) {
+    registrarErro('teste-aviso', e);
+    mostra('red', `<b>Não consegui enviar.</b> ${navigator.onLine ? '' : 'O iPhone está sem internet. '}Se estiver usando o chip da agência, tente no wi-fi. Se tiver bloqueador de anúncios ou VPN, desligue e tente de novo.<br><span class="muted">Detalhe: ${esc(erroTexto(e))}</span><br>Canal configurado: <b>${esc(cfg.ntfy || '—')}</b>`);
+  }
 }

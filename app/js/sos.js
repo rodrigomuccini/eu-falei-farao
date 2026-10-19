@@ -132,15 +132,43 @@ function sosPararAudio() { if (SOS.rec && SOS.rec.state === 'recording') SOS.rec
 
 /* --- Alerta automático para o celular do Rodrigo (ntfy; CallMeBot como alternativa) --- */
 const NTFY = 'https://ntfy.sh';
-async function ntfyPublicar(dados) {
-  const c = Cfg.get(); if (!c.ntfy) return null;
-  const r = await comTempo(fetch(NTFY + '/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: c.ntfy, ...dados }) }), 20000, 'sem resposta do ntfy');
-  if (!r.ok) throw new Error('ntfy ' + r.status); return r.json();
+// Publica no ntfy tentando três formas: JSON, texto simples e, por último, um pedido GET sem CORS.
+async function ntfyPublicar(dados, topico) {
+  const c = Cfg.get(); const t = topico || c.ntfy; if (!t) return null;
+  const falhas = [];
+  try {
+    const r = await comTempo(fetch(NTFY + '/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: t, ...dados }) }), 15000, 'sem resposta');
+    if (r.ok) return { via: 'json' }; falhas.push('json: HTTP ' + r.status);
+  } catch (e) { falhas.push('json: ' + erroTexto(e)); }
+  const q = new URLSearchParams();
+  if (dados.title) q.set('title', dados.title); if (dados.priority) q.set('priority', String(dados.priority));
+  if (dados.tags) q.set('tags', dados.tags.join(',')); if (dados.click) q.set('click', dados.click);
+  try {
+    const r = await comTempo(fetch(`${NTFY}/${encodeURIComponent(t)}?${q}`, { method: 'POST', body: new Blob([dados.message || ''], { type: 'text/plain' }) }), 15000, 'sem resposta');
+    if (r.ok) return { via: 'texto', falhas }; falhas.push('texto: HTTP ' + r.status);
+  } catch (e) { falhas.push('texto: ' + erroTexto(e)); }
+  try {
+    q.set('message', (dados.message || '').slice(0, 1500));
+    await new Promise((ok, falha) => {
+      const img = new Image(); const tm = setTimeout(() => falha(new Error('sem resposta')), 15000);
+      // O ntfy responde JSON, então a imagem "falha" ao carregar mesmo quando a mensagem foi entregue.
+      img.onload = img.onerror = () => { clearTimeout(tm); ok(); };
+      img.src = `${NTFY}/${encodeURIComponent(t)}/publish?${q}`;
+    });
+    return { via: 'imagem (sem confirmação)', falhas };
+  } catch (e) { falhas.push('imagem: ' + erroTexto(e)); }
+  const erro = new Error(falhas.join(' | ')); erro.name = 'EnvioFalhou'; throw erro;
 }
 async function ntfyArquivo(blob, nome, titulo) {
   const c = Cfg.get(); if (!c.ntfy || !blob || blob.size > 14.5 * 1048576) return null;
-  const r = await comTempo(fetch(`${NTFY}/${encodeURIComponent(c.ntfy)}`, { method: 'PUT', body: blob, headers: { Filename: nome, Title: titulo, Priority: '4', Tags: 'paperclip' } }), 90000, 'envio do arquivo demorou demais');
-  if (!r.ok) throw new Error('ntfy arquivo ' + r.status);
+  try {
+    const r = await comTempo(fetch(`${NTFY}/${encodeURIComponent(c.ntfy)}`, { method: 'PUT', body: blob, headers: { Filename: nome, Title: titulo, Priority: '4', Tags: 'paperclip' } }), 90000, 'envio do arquivo demorou demais');
+    if (r.ok) { const j = await r.json(); return j.attachment && j.attachment.url; }
+  } catch (e) { registrarErro('ntfy-arquivo-put', e); }
+  // Forma simples (sem pré-verificação do navegador): nome e título vão no endereço
+  const q = new URLSearchParams({ filename: nome, title: titulo, priority: '4', tags: 'paperclip' });
+  const r = await comTempo(fetch(`${NTFY}/${encodeURIComponent(c.ntfy)}?${q}`, { method: 'POST', body: new Blob([blob], { type: 'text/plain' }) }), 90000, 'envio do arquivo demorou demais');
+  if (!r.ok) throw new Error('ntfy arquivo HTTP ' + r.status);
   const j = await r.json(); return j.attachment && j.attachment.url;
 }
 function sosAutoStatus() {

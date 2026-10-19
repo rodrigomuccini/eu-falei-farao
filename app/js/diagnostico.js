@@ -62,6 +62,11 @@ async function rodarDiagnostico(btn) {
     const { data } = await comTempo(w.recognize(c), 90000, 'leitura demorou demais');
     diagLinha(/EXIT/i.test(data.text), 'Leitura de texto', `leu "${(data.text || '').trim()}" em ${Math.round((Date.now() - t0) / 1000)} s · idiomas ${OCR_LANGS.join('+')}`);
   } catch (e) { diagLinha(false, 'Leitura de texto', erroTexto(e)); }
+  // Aviso automático (ntfy): testa num canal descartável, sem notificar ninguém
+  try {
+    const r = await ntfyPublicar({ title: 'diagnostico', message: 'teste de conexao', priority: 1 }, 'farao-diag-' + Math.random().toString(36).slice(2, 12));
+    diagLinha(r.via === 'json', 'Conexão do aviso automático', `forma: ${r.via}${r.falhas && r.falhas.length ? ' · antes falhou: ' + r.falhas.join(' | ') : ''} · canal ${Cfg.get().ntfy ? 'configurado' : 'NÃO configurado'}`);
+  } catch (e) { diagLinha(false, 'Conexão do aviso automático', erroTexto(e)); }
   // Compartilhar arquivos
   try { const f = new File([new Blob(['x'], { type: 'image/jpeg' })], 't.jpg', { type: 'image/jpeg' }); diagLinha(!!(navigator.canShare && navigator.canShare({ files: [f] })), 'Enviar arquivos (selfie/áudio)', navigator.canShare ? 'ok' : 'sem suporte'); } catch (e) { diagLinha(false, 'Enviar arquivos', erroTexto(e)); }
   try { const est = await navigator.storage.estimate(); diagLinha(true, 'Espaço do app', `${Math.round(est.usage / 1048576)} MB usados de ${Math.round(est.quota / 1048576)} MB`); } catch {}
