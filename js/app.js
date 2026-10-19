@@ -45,7 +45,7 @@ function tocar(src, reservaTexto, reservaLang) {
   }
   if ('speechSynthesis' in window) speechSynthesis.cancel();
   AUDIO_ATUAL = src; AUDIO_RESERVA = reservaTexto ? [reservaTexto, reservaLang || 'pt-BR'] : null;
-  PLAYER.src = src;
+  PLAYER.src = audioURL(src);
   PLAYER.currentTime = 0;
   const p = PLAYER.play();
   if (p) p.catch(err => {
@@ -85,7 +85,7 @@ function pularAudio(seg) { if (AUDIO_ATUAL) PLAYER.currentTime = Math.max(0, Mat
 const AUDIO_CACHE = 'farao-audio-v2';
 async function audiosGuardados() {
   if (!('caches' in window)) return 0;
-  try { const c = await caches.open(AUDIO_CACHE); const ks = await c.keys(); const set = new Set(ks.map(k => new URL(k.url).pathname)); return AUDIOS.filter(a => set.has(new URL(a, location.href).pathname)).length; } catch { return 0; }
+  try { const c = await caches.open(AUDIO_CACHE); const ks = await c.keys(); const set = new Set(ks.map(k => k.url)); return AUDIOS.filter(a => set.has(new URL(a, location.href).href)).length; } catch { return 0; }
 }
 let BAIXANDO = false;
 async function baixarAudios(silencioso) {
@@ -98,6 +98,9 @@ async function baixarAudios(silencioso) {
       try { const r = await fetch(a, { cache: 'reload' }); if (r.ok) await c.put(new URL(a, location.href).href, r); } catch {}
       const el = $('#audios-status'); if (el) el.textContent = `Baixando áudios… ${await audiosGuardados()} de ${AUDIOS.length}`;
     }
+    // apaga versões antigas que não estão mais na lista
+    const atuais = new Set(AUDIOS.map(a => new URL(a, location.href).href));
+    for (const k of await c.keys()) if (!atuais.has(k.url)) await c.delete(k);
   } finally { BAIXANDO = false; }
   const n = await audiosGuardados();
   const el = $('#audios-status'); if (el) el.innerHTML = statusAudiosTexto(n);
