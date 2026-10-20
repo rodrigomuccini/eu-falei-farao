@@ -135,3 +135,13 @@ label.btn { cursor: pointer; }
 .vivo-barra .row { gap: 8px; }
 .vivo-barra .btn { margin: 0; }
 #offline-aviso { position: sticky; top: 0; z-index: 20; background: #5c3e0a; color: #fff8e6; text-align: center; font-size: .85rem; font-weight: 700; padding: calc(4px + env(safe-area-inset-top)) 12px 4px; }
+.int-painel { border-radius: var(--radius); padding: 14px 16px; margin: 10px 0; }
+.int-outro { background: var(--nile-soft); }
+.int-eu { background: var(--green-soft); }
+.int-painel.virado { transform: rotate(180deg); }
+.int-texto { font-size: 1.35rem; font-weight: 700; min-height: 3.2em; line-height: 1.35; margin-bottom: 8px; word-break: break-word; }
+.int-outro .int-texto[dir=rtl] { font-family: "Geeza Pro", "Noto Naskh Arabic", Arial, sans-serif; font-size: 1.6rem; }
+.int-mic { min-height: 64px; font-size: 1.15rem; }
+.int-mic.ouvindo { animation: pulsar 1s ease-in-out infinite; box-shadow: 0 0 0 4px rgba(46,125,50,.35); }
+@keyframes pulsar { 50% { opacity: .75; } }
+details summary::-webkit-details-marker { display: none; }

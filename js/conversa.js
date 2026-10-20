@@ -2,7 +2,8 @@
 Views.conversa = () => {
   const feito = Store.get('offlineManual', {});
   const html = `
-  <div class="card nile"><b>Tradução simultânea</b><p class="small">Você fala em português e o iPhone fala em árabe. A outra pessoa responde em árabe e o iPhone fala em português. Quem faz isso é o app <b>Traduzir</b>, que já vem no iPhone e funciona <b>sem internet</b>.</p></div>
+  <a class="btn green" href="#interprete">🗣️ Usar o tradutor falado deste app (precisa de internet)</a>
+  <div class="card nile"><b>Sem internet: app Traduzir do iPhone</b><p class="small">Quando não tiver internet, como no chip da agência, use o app <b>Traduzir</b>, que já vem no iPhone. Ele faz a mesma conversa falada e funciona <b>sem internet</b>.</p></div>
 
   <div class="card"><div class="row" style="align-items:center;gap:14px">
     <div style="flex:0 0 64px;height:64px;border-radius:16px;background:linear-gradient(135deg,#1a73e8,#0b57d0);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.3rem">A文</div>
@@ -36,6 +37,6 @@ Views.conversa = () => {
   </ul></div>
 
   <div class="row"><a class="btn secondary sm" href="https://apps.apple.com/br/app/id1514844618" target="_blank">Não tenho o app Traduzir</a><a class="btn secondary sm" href="https://apps.apple.com/app/id414706506" target="_blank">Alternativa: Google Tradutor</a></div>`;
-  return { title: 'Conversar com alguém', html, nav: 'frases' };
+  return { title: 'Tradução sem internet', html, nav: 'frases' };
 };
 function marcarConversa(k) { const f = Store.get('offlineManual', {}); f[k] = !f[k]; Store.set('offlineManual', f); render(true); }
