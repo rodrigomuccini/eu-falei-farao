@@ -1,4 +1,4 @@
-const VERSION = 'farao-v11';
+const VERSION = 'farao-v12';
 const VENDOR_CACHE = 'farao-vendor-v1';
 const AUDIO_CACHE = 'farao-audio-v2';
 const SHELL = ['./', './index.html', './css/app.css', './js/db.js', './js/app.js', './js/data/roteiro.js', './js/data/lugares.js', './js/data/frases.js', './js/data/guias.js', './js/data/audios.js', './js/data/glossario.js', './js/diagnostico.js', './js/geo.js', './js/exif.js', './js/sos.js', './js/localizacao.js', './js/album.js', './js/tradutor-camera.js', './js/offline.js', './js/conversa.js', './js/interprete.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
@@ -56,7 +56,7 @@ self.addEventListener('fetch', e => {
     return;
   }
   e.respondWith(
-    fetch(e.request).then(r => { if (r.status === 200) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); } return r; })
+    fetch(new Request(e.request.url, { cache: 'no-cache', credentials: 'same-origin' })).then(r => { if (r.status === 200) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); } return r; })
       .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
   );
 });

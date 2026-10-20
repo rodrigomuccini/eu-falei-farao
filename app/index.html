@@ -47,7 +47,16 @@
   <script src="js/conversa.js"></script>
   <script src="js/interprete.js"></script>
   <script>
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => { setInterval(() => r.update().catch(() => {}), 30 * 60000); }).catch(() => {});
+      let jaRecarregou = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (jaRecarregou) return;
+        const ocupado = () => (typeof SOS !== 'undefined' && SOS.ativo) || (typeof INT !== 'undefined' && !INT.parado) || document.getElementById('vivo');
+        const recarregar = () => { if (ocupado()) return setTimeout(recarregar, 5000); jaRecarregou = true; location.reload(); };
+        recarregar();
+      });
+    }
   </script>
 </body>
 </html>
