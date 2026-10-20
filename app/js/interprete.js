@@ -79,41 +79,66 @@ function intUI(quem, texto, dir) { const el = document.getElementById('int-txt-'
 function intStatus(t) { const el = document.getElementById('int-status'); if (el) el.innerHTML = t; }
 function intBotoes(ativo) { ['eu', 'outro'].forEach(q => { const b = document.getElementById('int-btn-' + q); if (b) b.classList.toggle('ouvindo', q === ativo); }); }
 
+const SILENCIO_MS = 1500, LIMITE_FALA_MS = 25000;
 function ouvirInterprete(quem, tentativa = 0) {
+  // Tocar de novo no botão de quem está falando encerra e traduz na hora
+  if (INT.terminar && INT.ouvindo === quem && !INT.parado) { INT.terminar('manual'); return; }
   if (!Reconhecedor) { intStatus('Este iPhone não deixa o app ouvir direto. Use o ditado do teclado em "Escrever ou ditar pelo teclado".'); const d = document.querySelector('details'); if (d) d.open = true; return; }
   if (!navigator.onLine) { intStatus('Sem internet: a tradução não funciona. Use o <a href="#conversa">app Traduzir do iPhone</a>.'); return; }
   pararReconhecimento(); if ('speechSynthesis' in window) speechSynthesis.cancel();
   INT.parado = false;
+  const meu = INT.seq = (INT.seq || 0) + 1;
   const L = intLingua(); const cfg = quem === 'eu' ? PT : L;
   const chave = 'intRec.' + cfg.rec[0]; const base = Store.get(chave, 0);
   const idx = Math.min(base + tentativa, cfg.rec.length - 1); const codigo = cfg.rec[idx];
   const rec = new Reconhecedor(); INT.rec = rec; INT.ouvindo = quem;
   rec.lang = codigo; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-  let final = '', algumResultado = false;
+  let final = '', parcial = '', algumResultado = false, concluido = false, timerSil = null;
+  const dir = quem === 'eu' ? 'ltr' : L.dir;
   intBotoes(quem);
-  const btn = document.getElementById('int-btn-' + quem); if (btn) btn.textContent = quem === 'eu' ? '🎤 Ouvindo… fale agora' : '🎤 ' + L.ouvindo;
-  intStatus(quem === 'eu' ? '🎤 Ouvindo você…' : `🎤 Ouvindo a outra pessoa (${L.nome})…`);
+  const btn = document.getElementById('int-btn-' + quem); if (btn) btn.textContent = quem === 'eu' ? '🎤 Ouvindo… toque aqui quando terminar' : '🎤 ' + L.ouvindo;
+  intStatus(quem === 'eu' ? '🎤 Ouvindo você… quando parar de falar, o app traduz sozinho.' : `🎤 Ouvindo a outra pessoa (${L.nome})…`);
+  const limite = setTimeout(() => terminar('limite'), LIMITE_FALA_MS);
+
+  // O iPhone nem sempre avisa quando a pessoa terminou: o app decide pelo silêncio.
+  const terminar = async motivo => {
+    if (concluido) return; concluido = true;
+    clearTimeout(timerSil); clearTimeout(limite);
+    if (INT.seq !== meu) return; // outra escuta começou depois desta
+    INT.terminar = null; INT.ouvindo = null; if (INT.rec === rec) INT.rec = null;
+    try { rec.stop(); } catch {}
+    intBotoes(null); intRotulos();
+    if (INT.parado) return;
+    const texto = (final + ' ' + parcial).replace(/\s+/g, ' ').trim();
+    if (!texto) {
+      INT.semTexto = (INT.semTexto || 0) + 1;
+      if (algumResultado === false && INT.semTexto >= 2) {
+        intStatus('O iPhone não está escrevendo o que é falado. Use o <b>ditado do teclado</b> logo abaixo, ou o <a href="#conversa">app Traduzir do iPhone</a>.');
+        const d = document.querySelector('details'); if (d) d.open = true; INT.semTexto = 0; return;
+      }
+      if (Store.get('intAuto', true) && motivo !== 'manual' && INT.silencios++ < 2) return ouvirInterprete(quem);
+      intStatus('Não ouvi nada. Toque no botão e fale mais perto do celular.'); return;
+    }
+    INT.silencios = 0; INT.semTexto = 0;
+    await processarFala(quem, texto);
+  };
+  INT.terminar = terminar;
+
   rec.onresult = ev => {
-    algumResultado = true; let parcial = '';
-    for (let i = ev.resultIndex; i < ev.results.length; i++) { const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) final += t; else parcial += t; }
-    const t = (final + ' ' + parcial).trim(); if (t) intUI(quem, t, quem === 'eu' ? 'ltr' : L.dir);
+    algumResultado = true; final = ''; parcial = '';
+    // Reconstrói tudo a cada evento (o iPhone às vezes repete os resultados anteriores)
+    for (let i = 0; i < ev.results.length; i++) { const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) final += t + ' '; else parcial += t + ' '; }
+    const t = (final + parcial).trim(); if (t) intUI(quem, t, dir);
+    clearTimeout(timerSil); timerSil = setTimeout(() => terminar('silencio'), SILENCIO_MS);
   };
   rec.onerror = ev => {
     registrarErro('interprete-' + ev.error, ev.message || ev.error);
-    if (ev.error === 'language-not-supported' && idx + 1 < cfg.rec.length) { INT.trocandoLingua = true; Store.set(chave, idx + 1); return setTimeout(() => ouvirInterprete(quem, 0), 200); }
-    const msg = { 'not-allowed': 'O iPhone bloqueou o microfone ou o ditado. Em Ajustes → Apps → Safari, permita o Microfone, e em Ajustes → Geral → Teclado, ligue Ativar Ditado.', 'service-not-allowed': 'O ditado do iPhone está desligado. Em Ajustes → Geral → Teclado, ligue Ativar Ditado. Enquanto isso, use o ditado do teclado abaixo.', 'network': 'Sem conexão com o serviço de voz. Confira a internet.', 'no-speech': 'Não ouvi nada. Toque e fale de novo, mais perto do celular.', 'audio-capture': 'O microfone está sendo usado por outro app.' }[ev.error];
-    if (msg) intStatus(msg);
+    if (ev.error === 'language-not-supported' && idx + 1 < cfg.rec.length) { concluido = true; clearTimeout(limite); Store.set(chave, idx + 1); INT.terminar = null; return setTimeout(() => ouvirInterprete(quem, 0), 200); }
+    const msg = { 'not-allowed': 'O iPhone bloqueou o microfone ou o ditado. Em Ajustes → Apps → Safari, permita o Microfone, e em Ajustes → Geral → Teclado, ligue Ativar Ditado.', 'service-not-allowed': 'O ditado do iPhone está desligado. Em Ajustes → Geral → Teclado, ligue Ativar Ditado. Enquanto isso, use o ditado do teclado abaixo.', 'network': 'Sem conexão com o serviço de voz. Confira a internet.', 'audio-capture': 'O microfone está sendo usado por outro app.' }[ev.error];
+    if (msg) { concluido = true; clearTimeout(limite); clearTimeout(timerSil); INT.terminar = null; INT.ouvindo = null; intBotoes(null); intRotulos(); intStatus(msg); }
   };
-  rec.onend = async () => {
-    intBotoes(null); intRotulos();
-    if (INT.trocandoLingua) { INT.trocandoLingua = false; return; }
-    if (INT.rec !== rec || INT.parado) return;
-    const texto = final.trim();
-    if (!texto) { if (!algumResultado && Store.get('intAuto', true) && !INT.parado && INT.silencios++ < 2) return ouvirInterprete(quem); intStatus('Ninguém falou. Toque no botão de quem vai falar.'); return; }
-    INT.silencios = 0;
-    await processarFala(quem, texto);
-  };
-  try { rec.start(); } catch (e) { registrarErro('interprete-start', e); intStatus('Não consegui ligar o microfone: ' + esc(erroTexto(e))); }
+  rec.onend = () => { if (!concluido) terminar('fim'); };
+  try { rec.start(); } catch (e) { registrarErro('interprete-start', e); concluido = true; clearTimeout(limite); INT.terminar = null; intBotoes(null); intRotulos(); intStatus('Não consegui ligar o microfone: ' + esc(erroTexto(e))); }
 }
 
 async function processarFala(quem, texto) {
@@ -140,6 +165,6 @@ async function traduzirDigitado(quem) {
   INT.parado = true; await processarFala(quem, t); el.value = '';
 }
 function intRotulos() { const L = intLingua(); const a = document.getElementById('int-btn-eu'), b = document.getElementById('int-btn-outro'); if (a) a.textContent = '🎤 Toque e fale (português)'; if (b) b.textContent = '🎤 ' + L.botao; }
-function pararReconhecimento() { if (INT.rec) { const r = INT.rec; INT.rec = null; try { r.abort(); } catch {} } }
+function pararReconhecimento() { INT.seq = (INT.seq || 0) + 1; INT.terminar = null; INT.ouvindo = null; if (INT.rec) { const r = INT.rec; INT.rec = null; try { r.abort(); } catch {} } }
 function pararInterprete() { INT.parado = true; pararReconhecimento(); if ('speechSynthesis' in window) speechSynthesis.cancel(); intBotoes(null); intRotulos(); intStatus('Parado. Toque no botão de quem vai falar.'); }
 window.addEventListener('hashchange', () => { if (!/^#interprete/.test(location.hash)) { INT.parado = true; pararReconhecimento(); } });
