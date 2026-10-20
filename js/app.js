@@ -156,6 +156,18 @@ function render(manter) {
   if (manter !== true) stopSpeak();
   const raw = location.hash.slice(1) || 'hoje';
   const [view, ...args] = raw.split('/');
+  if (!Views[view] && NAV.indexOf(view) < 0 && view !== '' && view !== 'hoje') {
+    let tentou = false; try { tentou = sessionStorage.getItem('recarregou-' + view) === '1'; sessionStorage.setItem('recarregou-' + view, '1'); } catch {}
+    if (!tentou) {
+      $('#main').innerHTML = '<div class="card nile">Atualizando o app… um instante.</div>';
+      const recarregar = () => location.reload();
+      if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(r => r ? r.update().catch(() => {}).finally(recarregar) : recarregar()).catch(recarregar);
+      else recarregar();
+      return;
+    }
+    registrarErro('tela-inexistente', view);
+  }
+  if (Views[view]) { try { sessionStorage.removeItem('recarregou-' + view); } catch {} }
   const fn = Views[view] || Views.hoje;
   const main = $('#main');
   if (manter !== true) { main.innerHTML = ''; window.scrollTo(0, 0); }
