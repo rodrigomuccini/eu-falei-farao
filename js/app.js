@@ -199,7 +199,7 @@ Views.hoje = () => {
   }
   const hotel = dia.hotel ? HOTEIS[dia.hotel] : null;
   html += `<div class="hero"><div class="muted">${fmtData(iso)} · Dia ${dia.n} de ${ROTEIRO.length}</div><h1>${esc(dia.titulo)}</h1><div class="muted">📍 ${esc(dia.cidade)}</div></div>`;
-  html += SOS_BOTAO() + relogios;
+  html += SOS_BOTAO() + `<a class="btn nile" href="#conversa" style="min-height:64px;font-size:1.15rem">🗣️ Conversar com alguém (tradução falada)</a>` + relogios;
   html += `<div id="clima"></div>`;
   html += `<div class="grid2" style="margin:12px 0">
     <a class="btn" href="#frases"><span class="ico">💬</span>Frases</a>
@@ -365,7 +365,7 @@ Views.lugar = id => {
 Views.frases = (cat) => {
   const cats = FRASES.map(c => c.cat); const atual = cat ? decodeURIComponent(cat) : cats[0];
   const grupo = FRASES.find(c => c.cat === atual) || FRASES[0]; const ci = FRASES.indexOf(grupo);
-  let html = `<a class="btn" href="#camera">📷 Traduzir placa ou cardápio com a câmera</a><div class="card nile"><b>Traduzir qualquer coisa</b><p class="small">Para conversa ao vivo e para fotografar cardápios, use o Google Tradutor (instale e baixe os pacotes Português, Árabe e Inglês para funcionar sem internet).</p><div class="row"><a class="btn sm nile" href="https://translate.google.com/?sl=pt&tl=ar&op=translate" target="_blank">Abrir Tradutor</a><button class="btn sm secondary" onclick="traduzirTexto()">Escrever e traduzir</button></div></div>`;
+  let html = `<a class="btn nile" href="#conversa">🗣️ Conversar com alguém (tradução falada)</a><a class="btn" href="#camera">📷 Traduzir placa ou cardápio com a câmera</a><div class="card nile"><b>Traduzir qualquer coisa</b><p class="small">Para conversa ao vivo e para fotografar cardápios, use o Google Tradutor (instale e baixe os pacotes Português, Árabe e Inglês para funcionar sem internet).</p><div class="row"><a class="btn sm nile" href="https://translate.google.com/?sl=pt&tl=ar&op=translate" target="_blank">Abrir Tradutor</a><button class="btn sm secondary" onclick="traduzirTexto()">Escrever e traduzir</button></div></div>`;
   html += `<div class="tabs">${cats.map(c => `<button class="${c === atual ? 'active' : ''}" onclick="go('frases/${encodeURIComponent(c)}')">${esc(c)}</button>`).join('')}</div>`;
   html += `<div class="card">${grupo.itens.map((f, ii) => `<div class="frase"><div class="body"><div class="pt">${esc(f.pt)}</div><div class="tr small">${esc(f.tr)}</div><div class="ar">${esc(f.ar)}</div></div><button class="icobtn nile" data-audio="audio/frases/${ci}_${ii}.m4a" onclick="tocar('audio/frases/${ci}_${ii}.m4a', ${esc(JSON.stringify(f.ar))}, 'ar-EG')">🔊</button><button class="icobtn" onclick="mostrarCartao(${esc(JSON.stringify(f.pt))}, ${esc(JSON.stringify(f.ar))}, ${esc(JSON.stringify(f.en))}, 'audio/frases/${ci}_${ii}.m4a')">👁️</button></div>`).join('')}</div>
   <p class="muted small">🔊 fala em árabe · 👁️ mostra a frase grande em árabe e inglês para a pessoa ler.</p>`;
@@ -554,7 +554,7 @@ Views.familia = () => {
 
 /* ---- Mais ---- */
 Views.mais = () => {
-  const itens = [['album', '🖼️', 'Fotos da viagem'], ['camera', '📷', 'Traduzir com câmera'], ['localizacao', '📍', 'Localização ao vivo'], ['offline', '📶', 'Usar sem internet'], ['diagnostico', '🩻', 'Diagnóstico'], ['remedios', '💊', 'Remédios'], ['documentos', '🛂', 'Documentos'], ['ficha', '🩺', 'Ficha médica'], ['dinheiro', '💵', 'Dinheiro'], ['comida', '🍽️', 'Comida'], ['cultura', '🧕', 'Cultura e roupa'], ['familia', '💚', 'Família'], ['mala', '🧳', 'Mala'], ['guia/fotos', '📸', 'Fotografia'], ['ajuda', '🆘', 'Ajuda'], ['config', '⚙️', 'Configurações']];
+  const itens = [['conversa', '🗣️', 'Conversar com alguém'], ['album', '🖼️', 'Fotos da viagem'], ['camera', '📷', 'Traduzir com câmera'], ['localizacao', '📍', 'Localização ao vivo'], ['offline', '📶', 'Usar sem internet'], ['diagnostico', '🩻', 'Diagnóstico'], ['remedios', '💊', 'Remédios'], ['documentos', '🛂', 'Documentos'], ['ficha', '🩺', 'Ficha médica'], ['dinheiro', '💵', 'Dinheiro'], ['comida', '🍽️', 'Comida'], ['cultura', '🧕', 'Cultura e roupa'], ['familia', '💚', 'Família'], ['mala', '🧳', 'Mala'], ['guia/fotos', '📸', 'Fotografia'], ['ajuda', '🆘', 'Ajuda'], ['config', '⚙️', 'Configurações']];
   return { title: 'Mais', html: `<div class="grid2">${itens.map(([h, i, t]) => `<a class="btn secondary" href="#${h}"><span class="ico">${i}</span>${t}</a>`).join('')}</div><p class="muted small" style="margin-top:20px;text-align:center">Eu falei Faraó · versão 2 · funciona sem internet depois de aberto uma vez.</p>` };
 };
 
