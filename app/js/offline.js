@@ -53,7 +53,7 @@ Views.offline = async () => {
   const feitos = Store.get('offlineManual', {});
   const manuais = [
     ['mapas', 'Mapas sem internet no Google Maps', 'No Google Maps: toque na sua foto → Mapas off-line → Selecionar seu mapa. Baixe Cairo, Aswan, Luxor e Sharm El Sheikh.'],
-    ['tradutor', 'Idiomas do Google Tradutor', 'No app Google Tradutor: toque na sua foto → Idiomas baixados → baixe Árabe e Português.'],
+    ['traduzir', 'Árabe e português no app Traduzir (conversa falada)', 'No app Traduzir do iPhone: toque no nome de um idioma → Idiomas Disponíveis Offline → baixe Árabe e Português (Brasil). Veja em Conversar com alguém.'],
     ['local', 'Compartilhamento de local com a família', 'Veja o passo a passo em Localização ao vivo.'],
     ['bateria', 'Carregador portátil na bolsa', 'Câmera, GPS e mapa gastam bateria.'],
   ];
