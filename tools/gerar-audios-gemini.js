@@ -74,8 +74,9 @@ function garantirWav(buf) {
 
 function codificar(wavPath, destino, ini, fim) {
   fs.mkdirSync(path.dirname(destino), { recursive: true });
+  // O corte vem antes do -i para o silenceremove agir em cada trecho, não no áudio inteiro.
   const corte = ini != null ? ['-ss', ini.toFixed(3), '-to', fim.toFixed(3)] : [];
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', wavPath, ...corte, '-af', 'silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,adelay=120,apad=pad_dur=0.25', '-ac', '1', '-ar', '24000', '-c:a', 'aac', '-b:a', '48k', '-movflags', '+faststart', destino]);
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...corte, '-i', wavPath, '-af', 'silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,adelay=120,apad=pad_dur=0.25', '-ac', '1', '-ar', '24000', '-c:a', 'aac', '-b:a', '48k', '-movflags', '+faststart', destino]);
 }
 
 // Acha os pontos de corte: os (n-1) maiores silêncios do áudio.
