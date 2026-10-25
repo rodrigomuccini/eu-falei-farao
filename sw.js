@@ -1,4 +1,4 @@
-const VERSION = 'farao-v13';
+const VERSION = 'farao-v14';
 const VENDOR_CACHE = 'farao-vendor-v1';
 const AUDIO_CACHE = 'farao-audio-v2';
 const SHELL = ['./', './index.html', './css/app.css', './js/db.js', './js/app.js', './js/data/roteiro.js', './js/data/lugares.js', './js/data/frases.js', './js/data/guias.js', './js/data/audios.js', './js/data/glossario.js', './js/diagnostico.js', './js/geo.js', './js/exif.js', './js/sos.js', './js/localizacao.js', './js/album.js', './js/tradutor-camera.js', './js/offline.js', './js/conversa.js', './js/interprete.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
@@ -55,8 +55,37 @@ self.addEventListener('fetch', e => {
     }));
     return;
   }
-  e.respondWith(
-    fetch(new Request(e.request.url, { cache: 'no-cache', credentials: 'same-origin' })).then(r => { if (r.status === 200) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); } return r; })
-      .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
-  );
+  e.respondWith(rede(e));
 });
+
+// Internet primeiro, mas com limite de espera: redes que bloqueiam sem recusar (como chips de
+// viagem que só liberam alguns apps) deixam o pedido parado. Nesse caso abre a cópia guardada.
+let redeLentaAte = 0;
+const ESPERA_MS = 2500;
+async function guardado(req) {
+  const c = await caches.open(VERSION);
+  return (await c.match(req)) || (req.mode === 'navigate' ? (await c.match(req, { ignoreSearch: true })) || (await c.match('./index.html')) || (await c.match('./')) : null);
+}
+function buscarEGuardar(req) {
+  return fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' })).then(r => {
+    if (r.status === 200) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
+    return r;
+  });
+}
+async function rede(e) {
+  const req = e.request;
+  const copia = await guardado(req);
+  const daRede = buscarEGuardar(req);
+  if (copia && Date.now() < redeLentaAte) { e.waitUntil(daRede.catch(() => {})); return copia; }
+  if (!copia) return daRede.catch(() => guardado(req).then(r => r || new Response('Sem internet', { status: 504 })));
+  let limite;
+  const tempo = new Promise(ok => { limite = setTimeout(() => ok('tempo'), ESPERA_MS); });
+  const r = await Promise.race([daRede.catch(() => 'erro'), tempo]);
+  clearTimeout(limite);
+  if (r === 'tempo' || r === 'erro') {
+    if (r === 'tempo') redeLentaAte = Date.now() + 60000;
+    e.waitUntil(daRede.catch(() => {}));
+    return copia;
+  }
+  return r;
+}
