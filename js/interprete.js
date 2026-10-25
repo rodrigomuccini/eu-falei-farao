@@ -11,15 +11,7 @@ const PT = { rec: ['pt-BR'], voz: 'pt-BR', mm: 'pt-BR' };
 const INT = { rec: null, ouvindo: null, log: [], parado: true, silencios: 0 };
 const Reconhecedor = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-async function traduzirTexto(texto, de, para) {
-  const cache = Store.get('tradCache2', {}); const k = de + '>' + para + '|' + texto;
-  if (cache[k]) return cache[k];
-  const r = await comTempo(fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(texto.slice(0, 480))}&langpair=${de}|${para}`), 15000, 'a tradução não respondeu');
-  const j = await r.json(); const tr = j && j.responseData && j.responseData.translatedText;
-  if (!tr || j.responseStatus != 200 || /MYMEMORY WARNING|QUERY LENGTH/i.test(tr)) throw new Error(j && j.responseDetails ? String(j.responseDetails).slice(0, 120) : 'tradução indisponível');
-  const ks = Object.keys(cache); if (ks.length > 400) ks.slice(0, 150).forEach(x => delete cache[x]);
-  cache[k] = tr; Store.set('tradCache2', cache); return tr;
-}
+async function traduzirTexto(texto, de, para) { return traduzirServico(texto, de, para); }
 
 function falarTexto(texto, lang) {
   return new Promise(ok => {
@@ -147,7 +139,11 @@ async function processarFala(quem, texto) {
   intStatus('Traduzindo…');
   let tr;
   try { tr = await traduzirTexto(texto, de, para); }
-  catch (e) { registrarErro('interprete-traduzir', e); intStatus(`Não consegui traduzir: ${esc(erroTexto(e))}. ${navigator.onLine ? 'Tente de novo.' : 'Sem internet.'}`); return; }
+  catch (e) {
+    registrarErro('interprete-traduzir', e);
+    const dica = { NaoTraduziu: 'Repita com outras palavras, em frases curtas.', SemInternet: 'Sem internet. Use o <a href="#conversa">app Traduzir do iPhone</a>.', Limite: 'Use o <a href="#conversa">app Traduzir do iPhone</a> até amanhã.' }[e.name] || 'Toque no botão e tente de novo.';
+    intStatus(`⚠️ Não consegui traduzir: ${esc(e.message)}. ${dica}`); return;
+  }
   const vozTr = quem === 'eu' ? L.voz : PT.voz;
   INT.log.push({ quem, orig: texto, tr, vozTr, dirOrig: quem === 'eu' ? 'ltr' : L.dir, dirTr: quem === 'eu' ? L.dir : 'ltr', hora: partsIn(TZ).hm });
   const log = document.getElementById('int-log'); if (log) log.innerHTML = intLogHtml();

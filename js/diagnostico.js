@@ -89,3 +89,30 @@ Views.diagnostico = () => {
     <h2>Últimos erros</h2><div class="card small">${erros.length ? erros.map(e => `<div class="kv"><span>${new Date(e.t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${esc(e.onde)}</span><b style="max-width:60%">${esc(e.erro)}</b></div>`).join('') : 'Nenhum erro registrado.'}</div>`;
   return { title: 'Diagnóstico', html, nav: 'mais' };
 };
+
+/* ===== Serviço de tradução compartilhado (tradutor falado e câmera) =====
+   MyMemory com onlyprivate=1 e mt=1: ignora a memória pública de traduções, que às vezes devolve
+   o texto sem traduzir ou frases sem relação, e usa só a tradução automática. */
+const normaliza = t => String(t || '').toLowerCase().replace(/[\s.,!?¿¡؟،:;"'«»()\-]+/g, ' ').trim();
+async function traduzirServico(texto, de, para) {
+  const t = String(texto || '').trim(); if (!t) return '';
+  const chave = 'trad.v3'; const cache = Store.get(chave, {}); const k = de + '>' + para + '|' + t;
+  if (cache[k]) return cache[k];
+  // Palavra ou expressão de placa conhecida: usa o glossário (só para o português)
+  if (para.startsWith('pt') && typeof GLOSSARIO !== 'undefined') {
+    const ex = GLOSSARIO.find(([o]) => normaliza(o) === normaliza(t)); if (ex) return ex[1];
+  }
+  if (!navigator.onLine) throw Object.assign(new Error('sem internet'), { name: 'SemInternet' });
+  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(t.slice(0, 480))}&langpair=${de}|${para}&mt=1&onlyprivate=1`;
+  const r = await comTempo(fetch(url), 15000, 'a tradução não respondeu');
+  let j = null; try { j = await r.json(); } catch {}
+  const tr = j && j.responseData && String(j.responseData.translatedText || '').trim();
+  if (r.status === 429 || (tr && /MYMEMORY WARNING|USED ALL AVAILABLE/i.test(tr)) || (j && j.quotaFinished)) throw Object.assign(new Error('o limite diário de traduções gratuitas acabou; volta amanhã'), { name: 'Limite' });
+  if (!tr || j.responseStatus != 200 || /QUERY LENGTH|INVALID/i.test(tr)) throw new Error(j && j.responseDetails ? String(j.responseDetails).slice(0, 120) : 'tradução indisponível');
+  if (normaliza(tr) === normaliza(t) && de.slice(0, 2) !== para.slice(0, 2)) throw Object.assign(new Error('o serviço não conseguiu traduzir esta frase'), { name: 'NaoTraduziu' });
+  const ks = Object.keys(cache); if (ks.length > 500) ks.slice(0, 150).forEach(x => delete cache[x]);
+  cache[k] = tr; Store.set(chave, cache);
+  return tr;
+}
+// Apaga traduções guardadas antes da correção (algumas estavam erradas)
+try { localStorage.removeItem('egito.tradCache'); localStorage.removeItem('egito.tradCache2'); } catch {}

@@ -41,21 +41,13 @@ function glossarioTraduz(t) {
 }
 async function traduzirLinha(t) {
   const de = temArabe(t) ? 'ar' : 'en';
-  const exato = GLOSSARIO.find(([o]) => o.toLowerCase() === t.toLowerCase().replace(/[.:!?،]+$/, '').trim());
-  if (exato) return exato[1];
-  const cache = Store.get('tradCache', {}); const k = de + '|' + t;
-  if (cache[k]) return cache[k];
-  if (navigator.onLine) {
-    try {
-      const r = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(t.slice(0, 450))}&langpair=${de}|pt-BR`);
-      const j = await r.json(); const tr = j && j.responseData && j.responseData.translatedText;
-      if (tr && j.responseStatus == 200 && !/MYMEMORY WARNING|QUERY LENGTH/i.test(tr)) {
-        const ks = Object.keys(cache); if (ks.length > 600) ks.slice(0, 200).forEach(x => delete cache[x]);
-        cache[k] = tr; Store.set('tradCache', cache); return tr;
-      }
-    } catch {}
+  try { return await traduzirServico(t, de, 'pt-BR'); }
+  catch (e) {
+    const g = glossarioTraduz(t); if (g) return g;
+    if (e.name === 'SemInternet') return '(sem internet: só palavras do glossário)';
+    if (e.name === 'Limite') return '(limite diário de traduções acabou)';
+    return '(não consegui traduzir)';
   }
-  return glossarioTraduz(t) || (temArabe(t) ? '(sem internet: tradução indisponível)' : t);
 }
 
 // Desenha caixas com a tradução por cima de cada linha de texto.
