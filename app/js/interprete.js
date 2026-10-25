@@ -23,8 +23,14 @@ function desbloquearVoz() {
 }
 function vozesDe(lang) { try { return speechSynthesis.getVoices().filter(v => v.lang.replace('_', '-').toLowerCase().startsWith(lang.slice(0, 2).toLowerCase())); } catch { return []; } }
 async function esperarVozes() {
-  if (!('speechSynthesis' in window) || speechSynthesis.getVoices().length) return;
-  await new Promise(ok => { const t = setTimeout(ok, 1200); speechSynthesis.addEventListener('voiceschanged', () => { clearTimeout(t); ok(); }, { once: true }); });
+  try {
+    if (!('speechSynthesis' in window) || speechSynthesis.getVoices().length) return;
+    await new Promise(ok => {
+      const t = setTimeout(ok, 1200); const pronto = () => { clearTimeout(t); ok(); };
+      if (typeof speechSynthesis.addEventListener === 'function') speechSynthesis.addEventListener('voiceschanged', pronto, { once: true });
+      else speechSynthesis.onvoiceschanged = pronto;
+    });
+  } catch (e) { registrarErro('voz-lista', e); }
 }
 // Parte síncrona: precisa rodar dentro do toque quando o iPhone exigir.
 function falarAgora(texto, lang) {
