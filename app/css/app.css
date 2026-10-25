@@ -145,3 +145,6 @@ label.btn { cursor: pointer; }
 .int-mic.ouvindo { animation: pulsar 1s ease-in-out infinite; box-shadow: 0 0 0 4px rgba(46,125,50,.35); }
 @keyframes pulsar { 50% { opacity: .75; } }
 details summary::-webkit-details-marker { display: none; }
+.int-res { border: 2px solid var(--gold); }
+.int-trad { font-size: 1.6rem; font-weight: 800; line-height: 1.35; margin: 4px 0 10px; word-break: break-word; }
+.int-trad[dir=rtl] { font-family: "Geeza Pro", "Noto Naskh Arabic", Arial, sans-serif; font-size: 1.9rem; }
