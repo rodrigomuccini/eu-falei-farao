@@ -13,17 +13,43 @@ const Reconhecedor = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 async function traduzirTexto(texto, de, para) { return traduzirServico(texto, de, para); }
 
-function falarTexto(texto, lang) {
-  return new Promise(ok => {
-    if (!('speechSynthesis' in window) || !texto) return ok();
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(texto); u.lang = lang; u.rate = lang.startsWith('pt') ? 0.95 : 0.88;
-    const vozes = speechSynthesis.getVoices().filter(v => v.lang.replace('_', '-').toLowerCase().startsWith(lang.slice(0, 2)));
-    const melhor = vozes.find(v => v.lang.replace('_', '-') === lang) || vozes[0]; if (melhor) u.voice = melhor;
-    const fim = setTimeout(ok, Math.min(20000, 1500 + texto.length * 120));
-    u.onend = u.onerror = () => { clearTimeout(fim); ok(); };
+/* --- Voz da tradução no iPhone ---
+   1) O iPhone só deixa falar se a voz for "liberada" num toque na tela: liberamos no toque do microfone.
+   2) cancel() seguido de speak() faz o Safari engolir a fala: só cancela se estiver falando, e espera.
+   3) Depois do microfone, o som pode ir para o alto-falante de ligação: muda para "playback" antes de falar. */
+function desbloquearVoz() {
+  if (INT.vozLiberada || !('speechSynthesis' in window)) return;
+  try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; u.rate = 2; speechSynthesis.speak(u); INT.vozLiberada = true; } catch {}
+}
+function vozesDe(lang) { try { return speechSynthesis.getVoices().filter(v => v.lang.replace('_', '-').toLowerCase().startsWith(lang.slice(0, 2).toLowerCase())); } catch { return []; } }
+async function esperarVozes() {
+  if (!('speechSynthesis' in window) || speechSynthesis.getVoices().length) return;
+  await new Promise(ok => { const t = setTimeout(ok, 1200); speechSynthesis.addEventListener('voiceschanged', () => { clearTimeout(t); ok(); }, { once: true }); });
+}
+// Parte síncrona: precisa rodar dentro do toque quando o iPhone exigir.
+function falarAgora(texto, lang) {
+  const vozes = vozesDe(lang);
+  sessaoAudio('playback');
+  return new Promise(ok => { try {
+    const u = new SpeechSynthesisUtterance(texto); u.lang = lang; u.rate = lang.startsWith('pt') ? 0.95 : 0.85; u.volume = 1;
+    try { const melhor = vozes.find(v => v.lang.replace('_', '-') === lang) || vozes[0]; if (melhor) u.voice = melhor; } catch (e) { registrarErro('voz-escolher', e); }
+    let comecou = false, acabou = false;
+    const fim = r => { if (acabou) return; acabou = true; clearTimeout(tInicio); clearTimeout(tFim); sessaoAudio('auto'); ok(r); };
+    u.onstart = () => { comecou = true; };
+    u.onend = () => fim({ ok: true });
+    u.onerror = ev => { registrarErro('voz-' + (ev.error || 'erro'), lang); fim({ ok: false, motivo: ev.error === 'not-allowed' ? 'bloqueado' : (vozes.length ? 'erro' : 'semVoz') }); };
+    // Se não começar a falar em 3 s, o iPhone bloqueou ou não tem a voz
+    const tInicio = setTimeout(() => { if (!comecou) { try { speechSynthesis.cancel(); } catch {} fim({ ok: false, motivo: vozes.length ? 'bloqueado' : 'semVoz' }); } }, 3000);
+    const tFim = setTimeout(() => fim({ ok: comecou }), Math.min(30000, 4000 + texto.length * 140));
     speechSynthesis.speak(u);
-  });
+  } catch (e) { registrarErro('voz-falar', e); sessaoAudio('auto'); ok({ ok: false, motivo: 'erro' }); } });
+}
+async function falarTexto(texto, lang) {
+  if (!('speechSynthesis' in window)) return { ok: false, motivo: 'semSuporte' };
+  if (!texto) return { ok: true };
+  await esperarVozes();
+  if (speechSynthesis.speaking || speechSynthesis.pending) { speechSynthesis.cancel(); await new Promise(r => setTimeout(r, 150)); }
+  return falarAgora(texto, lang);
 }
 
 function intLingua() { return LINGUAS[Store.get('intLingua', 'ar')] || LINGUAS.ar; }
@@ -49,6 +75,7 @@ Views.interprete = () => {
     <div class="int-texto" id="int-txt-eu">Toque no botão e fale em português.</div>
     <button class="btn green int-mic" id="int-btn-eu" onclick="ouvirInterprete('eu')">🎤 Toque e fale (português)</button>
   </div>
+  <div id="int-resultado"></div>
   <button class="btn outline" onclick="pararInterprete()">⏹ Parar</button>
   <p class="muted small" id="int-status">${temVoz ? 'Tire o iPhone do silencioso e aumente o volume para ouvir a tradução.' : 'Este iPhone não deixa o app ouvir direto. Use o ditado do teclado abaixo.'}</p>
 
@@ -65,7 +92,7 @@ Views.interprete = () => {
 
 function intLogHtml() {
   if (!INT.log.length) return '<p class="muted small">As frases traduzidas aparecem aqui.</p>';
-  return INT.log.slice().reverse().map((m, i) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="muted small">${m.quem === 'eu' ? 'Você' : 'Outra pessoa'} · ${m.hora}</div><div ${m.dirOrig === 'rtl' ? 'dir="rtl" class="ar" style="font-size:1.1rem"' : ''}>${esc(m.orig)}</div><div ${m.dirTr === 'rtl' ? 'dir="rtl" class="ar" style="font-size:1.25rem;font-weight:700"' : 'style="font-weight:700"'}>${esc(m.tr)}</div><button class="btn secondary sm" onclick="falarTexto(${esc(JSON.stringify(m.tr))}, '${m.vozTr}')">🔊 Repetir</button></div>`).join('');
+  return INT.log.slice().reverse().map((m, i) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="muted small">${m.quem === 'eu' ? 'Você' : 'Outra pessoa'} · ${m.hora}</div><div ${m.dirOrig === 'rtl' ? 'dir="rtl" class="ar" style="font-size:1.1rem"' : ''}>${esc(m.orig)}</div><div ${m.dirTr === 'rtl' ? 'dir="rtl" class="ar" style="font-size:1.25rem;font-weight:700"' : 'style="font-weight:700"'}>${esc(m.tr)}</div><button class="btn secondary sm" onclick="pararReconhecimento(); falarAgora(${esc(JSON.stringify(m.tr))}, '${m.vozTr}')">🔊 Repetir</button></div>`).join('');
 }
 function intUI(quem, texto, dir) { const el = document.getElementById('int-txt-' + quem); if (el) { el.textContent = texto; el.dir = dir || 'auto'; } }
 function intStatus(t) { const el = document.getElementById('int-status'); if (el) el.innerHTML = t; }
@@ -74,6 +101,7 @@ function intBotoes(ativo) { ['eu', 'outro'].forEach(q => { const b = document.ge
 const SILENCIO_MS = 1500, LIMITE_FALA_MS = 25000;
 function ouvirInterprete(quem, tentativa = 0) {
   // Tocar de novo no botão de quem está falando encerra e traduz na hora
+  desbloquearVoz();
   if (INT.terminar && INT.ouvindo === quem && !INT.parado) { INT.terminar('manual'); return; }
   if (!Reconhecedor) { intStatus('Este iPhone não deixa o app ouvir direto. Use o ditado do teclado em "Escrever ou ditar pelo teclado".'); const d = document.querySelector('details'); if (d) d.open = true; return; }
   if (!navigator.onLine) { intStatus('Sem internet: a tradução não funciona. Use o <a href="#conversa">app Traduzir do iPhone</a>.'); return; }
@@ -130,32 +158,78 @@ function ouvirInterprete(quem, tentativa = 0) {
     if (msg) { concluido = true; clearTimeout(limite); clearTimeout(timerSil); INT.terminar = null; INT.ouvindo = null; intBotoes(null); intRotulos(); intStatus(msg); }
   };
   rec.onend = () => { if (!concluido) terminar('fim'); };
+  sessaoAudio('auto');
   try { rec.start(); } catch (e) { registrarErro('interprete-start', e); concluido = true; clearTimeout(limite); INT.terminar = null; intBotoes(null); intRotulos(); intStatus('Não consegui ligar o microfone: ' + esc(erroTexto(e))); }
+}
+
+function intResultado(m, etapas, aviso) {
+  const el = document.getElementById('int-resultado'); if (!el) return;
+  const L = intLingua(); const alvo = m.quem === 'eu' ? L.nome : 'português';
+  el.innerHTML = `<div class="card int-res">
+    <div class="small">${etapas.map(e => `<span class="pill ${e.ok === false ? 'red' : e.ok ? 'green' : ''}">${e.ok === false ? '✕' : e.ok ? '✓' : '…'} ${e.t}</span>`).join(' ')}</div>
+    <div class="muted small" style="margin-top:8px">${m.quem === 'eu' ? 'Você disse' : 'A outra pessoa disse'}</div>
+    <div ${m.dirOrig === 'rtl' ? 'dir="rtl" class="ar" style="font-size:1.15rem"' : ''}>${esc(m.orig)}</div>
+    <div class="muted small" style="margin-top:8px">Tradução (${esc(alvo)})</div>
+    <div class="int-trad" ${m.dirTr === 'rtl' ? 'dir="rtl"' : ''}>${esc(m.tr || '…')}</div>
+    ${aviso ? `<p class="small" style="color:var(--red);font-weight:700">${aviso}</p>` : ''}
+    ${m.tr ? `<button class="btn ${aviso ? 'red' : 'nile'}" onclick="ouvirResultado()">🔊 Ouvir em ${esc(alvo)}</button>
+    <button class="btn secondary" onclick="mostrarTraducao()">👁️ Mostrar em tela cheia</button>` : ''}
+  </div>`;
+  if (aviso) try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
+}
+function mostrarTraducao() {
+  const m = INT.log[INT.log.length - 1]; if (!m) return;
+  overlay(`<div class="big"><div class="${m.dirTr === 'rtl' ? 'ar' : 'en'}" dir="${m.dirTr}" style="font-size:2.4rem;font-weight:800">${esc(m.tr)}</div><div class="pt">${esc(m.orig)}</div>
+    <button class="btn nile" onclick="ouvirResultado()">🔊 Ouvir</button><p class="muted small">Mostre esta tela para a pessoa.</p></div>`);
+}
+async function ouvirResultado() {
+  const m = INT.log[INT.log.length - 1]; if (!m) return;
+  pararReconhecimento();
+  if (!('speechSynthesis' in window)) return;
+  // Fala na hora, ainda dentro do toque (o iPhone aceita sempre)
+  if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+  INT.vozLiberada = true;
+  const r = await falarAgora(m.tr, m.vozTr);
+  if (r.ok) { intResultado(m, [{ ok: true, t: 'Ouvi' }, { ok: true, t: 'Traduzi' }, { ok: true, t: 'Falei' }]); if (Store.get('intAuto', true) && !INT.parado) setTimeout(() => ouvirInterprete(m.quem === 'eu' ? 'outro' : 'eu'), 350); }
+  else intResultado(m, [{ ok: true, t: 'Ouvi' }, { ok: true, t: 'Traduzi' }, { ok: false, t: 'Falei' }], avisoVoz(r.motivo, m));
+}
+function avisoVoz(motivo, m) {
+  const L = intLingua(); const lingua = m.quem === 'eu' ? L.nome : 'Português (Brasil)';
+  if (motivo === 'semVoz') return `Este iPhone não tem a voz em ${esc(lingua)}. Baixe em Ajustes → Acessibilidade → Conteúdo Falado → Vozes → ${esc(lingua)}. Enquanto isso, use "Mostrar em tela cheia".`;
+  return 'O iPhone não deixou falar sozinho. Toque no botão vermelho abaixo para ouvir. Confira também se o iPhone está fora do silencioso e com volume alto.';
 }
 
 async function processarFala(quem, texto) {
   const L = intLingua(); const de = quem === 'eu' ? PT.mm : L.mm, para = quem === 'eu' ? L.mm : PT.mm;
   const outro = quem === 'eu' ? 'outro' : 'eu';
+  const m = { quem, orig: texto, tr: '', vozTr: quem === 'eu' ? L.voz : PT.voz, dirOrig: quem === 'eu' ? 'ltr' : L.dir, dirTr: quem === 'eu' ? L.dir : 'ltr', hora: partsIn(TZ).hm };
+  intResultado(m, [{ ok: true, t: 'Ouvi' }, { t: 'Traduzindo' }]);
   intStatus('Traduzindo…');
-  let tr;
-  try { tr = await traduzirTexto(texto, de, para); }
+  try { m.tr = await traduzirTexto(texto, de, para); }
   catch (e) {
     registrarErro('interprete-traduzir', e);
-    const dica = { NaoTraduziu: 'Repita com outras palavras, em frases curtas.', SemInternet: 'Sem internet. Use o <a href="#conversa">app Traduzir do iPhone</a>.', Limite: 'Use o <a href="#conversa">app Traduzir do iPhone</a> até amanhã.' }[e.name] || 'Toque no botão e tente de novo.';
-    intStatus(`⚠️ Não consegui traduzir: ${esc(e.message)}. ${dica}`); return;
+    const dica = { NaoTraduziu: 'Repita com outras palavras, em frases curtas.', SemInternet: 'Sem internet. Use o <a href="#conversa">app Traduzir do iPhone</a>.', Limite: 'Use o <a href="#conversa">app Traduzir do iPhone</a> até amanhã.' }[e.name] || 'Toque no botão verde e tente de novo.';
+    intResultado(m, [{ ok: true, t: 'Ouvi' }, { ok: false, t: 'Traduzi' }], `Não consegui traduzir: ${esc(e.message)}. ${dica}`);
+    intStatus('⚠️ Não consegui traduzir.'); return;
   }
-  const vozTr = quem === 'eu' ? L.voz : PT.voz;
-  INT.log.push({ quem, orig: texto, tr, vozTr, dirOrig: quem === 'eu' ? 'ltr' : L.dir, dirTr: quem === 'eu' ? L.dir : 'ltr', hora: partsIn(TZ).hm });
+  INT.log.push(m);
   const log = document.getElementById('int-log'); if (log) log.innerHTML = intLogHtml();
-  intUI(outro, tr, quem === 'eu' ? L.dir : 'ltr');
+  intUI(outro, m.tr, m.dirTr);
+  intResultado(m, [{ ok: true, t: 'Ouvi' }, { ok: true, t: 'Traduzi' }, { t: 'Falando' }]);
   intStatus('🔊 Falando a tradução…');
-  await falarTexto(tr, vozTr);
+  const r = await falarTexto(m.tr, m.vozTr);
+  if (!r.ok) {
+    intResultado(m, [{ ok: true, t: 'Ouvi' }, { ok: true, t: 'Traduzi' }, { ok: false, t: 'Falei' }], avisoVoz(r.motivo, m));
+    intStatus('⚠️ Toque em Ouvir para escutar a tradução.'); return; // espera o toque, que o iPhone sempre aceita
+  }
+  intResultado(m, [{ ok: true, t: 'Ouvi' }, { ok: true, t: 'Traduzi' }, { ok: true, t: 'Falei' }]);
   if (INT.parado || location.hash.slice(1).split('/')[0] !== 'interprete') return;
   if (Store.get('intAuto', true)) setTimeout(() => { if (!INT.parado) ouvirInterprete(outro); }, 350);
   else intStatus('Pronto. Toque no botão de quem vai falar.');
 }
 
 async function traduzirDigitado(quem) {
+  desbloquearVoz();
   const el = document.getElementById('int-digitar'); const t = el && el.value.trim(); if (!t) return toast('Escreva ou dite alguma coisa');
   if (!navigator.onLine) return intStatus('Sem internet: a tradução não funciona. Use o <a href="#conversa">app Traduzir do iPhone</a>.');
   INT.parado = true; await processarFala(quem, t); el.value = '';
